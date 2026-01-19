@@ -62,6 +62,18 @@ function generateId(prefix) {
   return id;
 }
 
+function getNextSequentialId(items, field, prefix, padLength = 3) {
+  const maxNum = items.reduce((max, item) => {
+    const value = String(item?.[field] ?? "");
+    const match = value.match(new RegExp(`^${prefix}(\\d+)$`));
+    if (!match) return max;
+    const num = parseInt(match[1], 10);
+    return Number.isNaN(num) ? max : Math.max(max, num);
+  }, 0);
+  const nextNum = maxNum + 1;
+  return `${prefix}${String(nextNum).padStart(padLength, "0")}`;
+}
+
 function normalizeOrderItemsForEdit(items = []) {
   if (!Array.isArray(items)) return [];
   return items.map(item => {
@@ -202,7 +214,7 @@ function CustomerModal({ customer, onSave, onClose }) {
   const [form, setForm] = useState(customer || { full_name: "", phone_number: "", address: "", notes: "" });
   const handleSubmit = e => {
     e.preventDefault();
-    onSave({ ...form, customer_id: customer?.customer_id || generateId("C"), created_at: customer?.created_at || new Date().toISOString().split("T")[0] });
+    onSave({ ...form, customer_id: customer?.customer_id, created_at: customer?.created_at });
   };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
@@ -292,7 +304,7 @@ function OrderModal({ customers, products, onSave, onClose }) {
     if (!isValid) return;
     onSave({
       customer_id: mode === "existing" ? customer.customer_id : null,
-      newCustomer: mode === "new" ? { ...newCust, customer_id: generateId("C"), created_at: new Date().toISOString().split("T")[0] } : null,
+      newCustomer: mode === "new" ? { ...newCust } : null,
       shipping_address: address || newCust.address || customer?.address || "",
       shipping_fee: Number(shippingFee) || 0,
       note: orderNote,
@@ -1433,12 +1445,17 @@ export default function App() {
   async function saveCustomer(data) {
     setShowCustomer(false);
     setEditCustomer(null);
+    const customerToSave = {
+      ...data,
+      customer_id: data.customer_id || getNextSequentialId(customers, "customer_id", "ID", 3),
+      created_at: data.created_at || new Date().toISOString().split("T")[0]
+    };
     if (editCustomer) {
-      setCustomers(customers.map(c => c.customer_id === data.customer_id ? data : c));
+      setCustomers(customers.map(c => c.customer_id === customerToSave.customer_id ? customerToSave : c));
     } else {
-      setCustomers([...customers, data]);
+      setCustomers([...customers, customerToSave]);
     }
-    await postAPI(DB_API_URL, "upsert_customer", { data });
+    await postAPI(DB_API_URL, "upsert_customer", { data: customerToSave });
   }
 
   async function deleteCustomer(id) {
@@ -1468,12 +1485,17 @@ export default function App() {
     setShowOrder(false);
     let custId = data.customer_id;
     if (data.newCustomer) {
-      setCustomers(prev => [...prev, data.newCustomer]);
-      custId = data.newCustomer.customer_id;
-      await postAPI(DB_API_URL, "upsert_customer", { data: data.newCustomer });
+      const newCustomer = {
+        ...data.newCustomer,
+        customer_id: data.newCustomer.customer_id || getNextSequentialId(customers, "customer_id", "ID", 3),
+        created_at: data.newCustomer.created_at || new Date().toISOString().split("T")[0]
+      };
+      setCustomers(prev => [...prev, newCustomer]);
+      custId = newCustomer.customer_id;
+      await postAPI(DB_API_URL, "upsert_customer", { data: newCustomer });
     }
     const newOrder = {
-      order_id: generateId("O"),
+      order_id: getNextSequentialId(orders, "order_id", "ORDER", 3),
       order_code: generateOrderCode(orders),
       customer_id: custId,
       shipping_address: data.shipping_address,
