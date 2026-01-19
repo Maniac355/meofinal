@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import PaymentBadge from "./components/PaymentBadge";
+import ShippingBadge from "./components/ShippingBadge";
+import formatCurrency from "./utils/formatCurrency";
+import calculatePaymentStatus from "./utils/paymentStatus";
 
 // ============ API URLS ============
 const DB_API_URL = "https://script.google.com/macros/s/AKfycby_YKTsZhgyGmHtGHZwAqOXkC4PplwoYN6y01LlIY7PSTyFDxcs_xDiWSEvaDSE9FCZ/exec";
@@ -6,10 +10,6 @@ const SEPAY_API_URL = "https://script.google.com/macros/s/AKfycbyzXm0kdoTcxI8gfC
 const VTP_API_URL = "https://script.google.com/macros/s/AKfycbxuIMd2HH4zCW0KzSHPSCzk68oT6l6zOzItjLiwBdBpzn2TrzswDGnLWgwDcuhk1U4W/exec";
 
 // ============ UTILITIES ============
-function formatCurrency(amount) {
-  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount || 0);
-}
-
 function generateOrderCode(orders) {
   const maxNum = orders.reduce((max, o) => {
     const match = o.order_code?.match(/DH(\d+)/);
@@ -41,38 +41,6 @@ function txKey(tx) {
 
 function generateId(prefix) {
   return `${prefix}${Date.now().toString(36)}`;
-}
-
-function normalizeText(input) {
-  return String(input || "").toLowerCase().trim()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function contentHasOrderCode(content, orderCode) {
-  if (!orderCode) return false;
-  const code = normalizeText(orderCode);
-  const tokens = normalizeText(content).split(" ");
-  return tokens.includes(code);
-}
-
-function calculatePaymentStatus(order, transactions) {
-  if (order.payment_override && order.payment_override !== "AUTO") {
-    return { status: order.payment_override, received: 0, diff: 0, tip: 0 };
-  }
-  // Match by: 1) manually matched order_code OR 2) content contains order code
-  const matching = transactions.filter(t =>
-    t.order_code === order.order_code || contentHasOrderCode(t.content, order.order_code)
-  );
-  const totalReceived = matching.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-  const orderTotal = Number(order.total_amount) || 0;
-  const diff = totalReceived - orderTotal;
-  const tip = diff > 0 ? diff : 0;
-
-  if (totalReceived === 0) return { status: "CHUA_CHUYEN", received: 0, diff: 0, tip: 0 };
-  if (totalReceived < orderTotal) return { status: "THIEU", received: totalReceived, diff, tip: 0 };
-  if (totalReceived === orderTotal) return { status: "DU", received: totalReceived, diff: 0, tip: 0 };
-  return { status: "THUA", received: totalReceived, diff, tip };
 }
 
 // ============ ICONS ============
@@ -116,27 +84,6 @@ const SHIPPING_OPTIONS = [
 ];
 
 // ============ COMPONENTS ============
-function PaymentBadge({ order, transactions }) {
-  const { status, diff } = calculatePaymentStatus(order, transactions);
-  const config = {
-    CHUA_CHUYEN: { label: "Chưa chuyển", bg: "bg-red-50", text: "text-red-700" },
-    THIEU: { label: `Thiếu ${formatCurrency(Math.abs(diff))}`, bg: "bg-red-50", text: "text-red-700" },
-    DU: { label: "Đã chuyển", bg: "bg-emerald-50", text: "text-emerald-700" },
-    THUA: { label: `Tip +${formatCurrency(diff)}`, bg: "bg-pink-50", text: "text-pink-700" },
-  }[status] || { label: status, bg: "bg-slate-100", text: "text-slate-600" };
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>{config.label}</span>;
-}
-
-function ShippingBadge({ status }) {
-  const config = {
-    CHUA_GIAO: { label: "Chưa giao", bg: "bg-red-50", text: "text-red-700" },
-    DANG_GIAO: { label: "Đang giao", bg: "bg-blue-50", text: "text-blue-700" },
-    VIETTEL_POST: { label: "Viettel Post", bg: "bg-orange-50", text: "text-orange-700" },
-    DA_GIAO: { label: "Đã giao", bg: "bg-emerald-50", text: "text-emerald-700" },
-  }[status] || { label: status || "Chưa giao", bg: "bg-red-50", text: "text-red-700" };
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>{config.label}</span>;
-}
-
 function FilterDropdown({ label, icon: Icon, value, options, onChange }) {
   const [open, setOpen] = useState(false);
   const selected = options.find(o => o.value === value) || options[0];
@@ -1116,6 +1063,7 @@ export default function App() {
   const [lastSync, setLastSync] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [newOrdersCount, setNewOrdersCount] = useState(0);
+  const loadInFlightRef = useRef(false);
 
   // Filters
   const [filterPayment, setFilterPayment] = useState("");
@@ -1158,7 +1106,8 @@ export default function App() {
 
   // Load DB data function (reusable)
   const loadData = useCallback(async (isManual = false) => {
-    if (syncing && !isManual) return;
+    if (loadInFlightRef.current && !isManual) return;
+    loadInFlightRef.current = true;
     setSyncing(true);
     try {
       // Load DB data and SePay transactions in parallel
@@ -1237,17 +1186,21 @@ export default function App() {
 
         setLastSync(new Date());
       }
-    } catch (e) { console.error("Sync error:", e); }
-    setSyncing(false);
-    setLoading(false);
-  }, [syncing]);
+    } catch (e) {
+      console.error("Sync error:", e);
+    } finally {
+      loadInFlightRef.current = false;
+      setSyncing(false);
+      setLoading(false);
+    }
+  }, []);
 
   // Initial load + Auto sync every 10s
   useEffect(() => {
     loadData();
     const id = setInterval(() => loadData(false), SYNC_INTERVAL);
     return () => clearInterval(id);
-  }, []);
+  }, [loadData]);
 
   
   // Manual sync
