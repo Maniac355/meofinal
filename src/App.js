@@ -90,6 +90,14 @@ function normalizeOrderItemsForEdit(items = []) {
   }).filter(Boolean);
 }
 
+function normalizeSearchValue(value) {
+  return String(value ?? "").toLowerCase();
+}
+
+function includesSearchValue(value, query) {
+  return normalizeSearchValue(value).includes(query);
+}
+
 // ============ ICONS ============
 const IconUsers = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>;
 const IconPackage = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>;
@@ -261,8 +269,10 @@ function OrderModal({ customers, products, onSave, onClose }) {
   const [prodSearch, setProdSearch] = useState("");
 
   const activeProducts = products.filter(p => p.is_active === true || p.is_active === "TRUE");
-  const filteredProducts = activeProducts.filter(p => p.product_name?.toLowerCase().includes(prodSearch.toLowerCase()));
-  const filteredCustomers = customers.filter(c => c.full_name?.toLowerCase().includes(search.toLowerCase()) || c.phone_number?.includes(search));
+  const productQuery = normalizeSearchValue(prodSearch);
+  const customerQuery = normalizeSearchValue(search);
+  const filteredProducts = activeProducts.filter(p => includesSearchValue(p.product_name, productQuery));
+  const filteredCustomers = customers.filter(c => includesSearchValue(c.full_name, customerQuery) || includesSearchValue(c.phone_number, customerQuery));
   const total = items.reduce((s, i) => s + i.subtotal, 0);
 
   const toggleProduct = (p) => {
@@ -533,7 +543,7 @@ function OrderDetailModal({ order, customer, products, transactions, onUpdate, o
   const activeProducts = products.filter(p => p.is_active === true || p.is_active === "TRUE");
   const availableProducts = activeProducts.filter(p =>
     !editItems.find(i => i.product_id === p.product_id) &&
-    p.product_name?.toLowerCase().includes(prodSearch.toLowerCase())
+    includesSearchValue(p.product_name, normalizeSearchValue(prodSearch))
   );
 
   // Update quantity
@@ -948,12 +958,12 @@ function MatchTransactionModal({ order, transactions, onMatch, onClose }) {
   const [search, setSearch] = useState("");
   const availableTx = transactions.filter(tx => !tx.order_code);
   const filteredTx = availableTx.filter(tx => {
-    const q = search.toLowerCase();
+    const q = normalizeSearchValue(search);
     return !q ||
-      tx.content?.toLowerCase().includes(q) ||
-      tx.transaction_code?.toLowerCase().includes(q) ||
-      tx.reference_code?.toLowerCase().includes(q) ||
-      String(tx.amount || "").includes(q);
+      includesSearchValue(tx.content, q) ||
+      includesSearchValue(tx.transaction_code, q) ||
+      includesSearchValue(tx.reference_code, q) ||
+      includesSearchValue(tx.amount, q);
   });
 
   return (
@@ -1085,8 +1095,8 @@ function MatchOrderModal({ transaction, orders, onMatch, onClose }) {
   const [search, setSearch] = useState("");
   const unmatchedOrders = orders.filter(o => {
     const matchSearch = !search ||
-      o.order_code?.toLowerCase().includes(search.toLowerCase()) ||
-      String(o.total_amount).includes(search);
+      includesSearchValue(o.order_code, normalizeSearchValue(search)) ||
+      includesSearchValue(o.total_amount, normalizeSearchValue(search));
     return matchSearch;
   });
 
@@ -1552,8 +1562,8 @@ export default function App() {
     return orders.filter(o => {
       if (search) {
         const c = customers.find(x => x.customer_id === o.customer_id);
-        const q = search.toLowerCase();
-        if (!o.order_code?.toLowerCase().includes(q) && !c?.full_name?.toLowerCase().includes(q) && !c?.phone_number?.includes(q)) return false;
+        const q = normalizeSearchValue(search);
+        if (!includesSearchValue(o.order_code, q) && !includesSearchValue(c?.full_name, q) && !includesSearchValue(c?.phone_number, q)) return false;
       }
       if (filterPayment) {
         const p = calculatePaymentStatus(o, transactions);
@@ -1564,8 +1574,8 @@ export default function App() {
     });
   }, [orders, customers, transactions, search, filterPayment, filterShipping]);
 
-  const filteredCustomers = customers.filter(c => !search || c.full_name?.toLowerCase().includes(search.toLowerCase()) || c.phone_number?.includes(search));
-  const filteredProducts = products.filter(p => !search || p.product_name?.toLowerCase().includes(search.toLowerCase()));
+  const filteredCustomers = customers.filter(c => !search || includesSearchValue(c.full_name, normalizeSearchValue(search)) || includesSearchValue(c.phone_number, normalizeSearchValue(search)));
+  const filteredProducts = products.filter(p => !search || includesSearchValue(p.product_name, normalizeSearchValue(search)));
 
   // Filtered transactions for SePay tab
   const filteredTransactions = useMemo(() => {
@@ -1573,11 +1583,11 @@ export default function App() {
 
     // Filter by search (transaction code, reference code, content)
     if (sepaySearch) {
-      const q = sepaySearch.toLowerCase();
+      const q = normalizeSearchValue(sepaySearch);
       result = result.filter(tx =>
-        tx.transaction_code?.toLowerCase().includes(q) ||
-        tx.reference_code?.toLowerCase().includes(q) ||
-        tx.content?.toLowerCase().includes(q)
+        includesSearchValue(tx.transaction_code, q) ||
+        includesSearchValue(tx.reference_code, q) ||
+        includesSearchValue(tx.content, q)
       );
     }
 
