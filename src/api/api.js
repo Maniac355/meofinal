@@ -48,6 +48,15 @@ export const postAPI = async (baseUrl, action, payload) => {
       body: JSON.stringify(body)
     });
   } catch (error) {
-    console.error("API error:", error);
+    console.warn("POST request failed, falling back to GET.", error);
+    try {
+      const params = new URLSearchParams({
+        action: normalizedAction,
+        data: JSON.stringify(body)
+      });
+      return await fetch(`${baseUrl}?${params.toString()}`);
+    } catch (fallbackError) {
+      console.error("API error:", fallbackError);
+    }
   }
 };
