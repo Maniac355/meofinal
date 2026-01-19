@@ -1124,7 +1124,17 @@ export default function App() {
   const [matchingTx, setMatchingTx] = useState(null);
 
   const parseItemsJson = (itemsJson, fallbackItems = [], orderCode = "") => {
-    if (!itemsJson) return fallbackItems;
+    if (!itemsJson) {
+      if (typeof fallbackItems === "string") {
+        try {
+          return JSON.parse(fallbackItems);
+        } catch (error) {
+          console.warn("Failed to parse items fallback", { orderCode, error });
+          return [];
+        }
+      }
+      return fallbackItems;
+    }
     try {
       return JSON.parse(itemsJson);
     } catch (error) {
