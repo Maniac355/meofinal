@@ -1251,13 +1251,13 @@ export default function App() {
     } else {
       setCustomers([...customers, data]);
     }
-    await postAPI(DB_API_URL, "upsert_customer", { action: "upsert_customer", data });
+    await postAPI(DB_API_URL, "upsert_customer", { data });
   }
 
   async function deleteCustomer(id) {
     setCustomers(customers.filter(c => c.customer_id !== id));
     setDeleteConfirm(null);
-    await postAPI(DB_API_URL, "delete_customer", { action: "delete_customer", customer_id: id });
+    await postAPI(DB_API_URL, "delete_customer", { customer_id: id });
   }
 
   async function saveProduct(data) {
@@ -1268,13 +1268,13 @@ export default function App() {
     } else {
       setProducts([...products, data]);
     }
-    await postAPI(DB_API_URL, "upsert_product", { action: "upsert_product", data });
+    await postAPI(DB_API_URL, "upsert_product", { data });
   }
 
   async function deleteProduct(id) {
     setProducts(products.filter(p => p.product_id !== id));
     setDeleteConfirm(null);
-    await postAPI(DB_API_URL, "delete_product", { action: "delete_product", product_id: id });
+    await postAPI(DB_API_URL, "delete_product", { product_id: id });
   }
 
   async function createOrder(data) {
@@ -1283,7 +1283,7 @@ export default function App() {
     if (data.newCustomer) {
       setCustomers(prev => [...prev, data.newCustomer]);
       custId = data.newCustomer.customer_id;
-      await postAPI(DB_API_URL, "upsert_customer", { action: "upsert_customer", data: data.newCustomer });
+      await postAPI(DB_API_URL, "upsert_customer", { data: data.newCustomer });
     }
     const newOrder = {
       order_id: generateId("O"),
@@ -1298,18 +1298,18 @@ export default function App() {
       items_json: JSON.stringify(data.items),
     };
     setOrders([newOrder, ...orders]);
-    await postAPI(DB_API_URL, "upsert_order", { action: "upsert_order", data: newOrder });
+    await postAPI(DB_API_URL, "upsert_order", { data: newOrder });
   }
 
   async function updateOrder(data) {
     const toSave = { ...data, items_json: JSON.stringify(data.items || []), vtp_order_code: data.vtp_order_code || "" };
     setOrders(orders.map(o => o.order_id === data.order_id ? toSave : o));
-    await postAPI(DB_API_URL, "upsert_order", { action: "upsert_order", data: toSave });
+    await postAPI(DB_API_URL, "upsert_order", { data: toSave });
   }
 
   async function deleteOrder(id) {
     setOrders(orders.filter(o => o.order_id !== id));
-    await postAPI(DB_API_URL, "delete_order", { action: "delete_order", order_id: id });
+    await postAPI(DB_API_URL, "delete_order", { order_id: id });
   }
 
   async function saveTransaction(transaction) {
@@ -1330,7 +1330,7 @@ export default function App() {
       return [transaction, ...prev];
     });
     // Save to API
-    await postAPI(DB_API_URL, "save_transaction", { action: "save_transaction", transaction });
+    await postAPI(DB_API_URL, "save_transaction", { transaction });
   }
 
   // Handle match order from SePay tab

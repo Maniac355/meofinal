@@ -8,12 +8,44 @@ export const getAPI = async (baseUrl, action) => {
   }
 };
 
+const normalizeAction = action => {
+  if (action.startsWith("upsert_")) {
+    return action.replace("upsert_", "save_");
+  }
+  return action;
+};
+
+const buildPayload = (action, payload = {}) => {
+  switch (action) {
+    case "save_customer":
+      return { customer: payload.data ?? payload.customer ?? payload };
+    case "delete_customer":
+      return { customer_id: payload.customer_id ?? payload.id };
+    case "save_product":
+      return { product: payload.data ?? payload.product ?? payload };
+    case "delete_product":
+      return { product_id: payload.product_id ?? payload.id };
+    case "save_order":
+      return { order: payload.data ?? payload.order ?? payload };
+    case "delete_order":
+      return { order_id: payload.order_id ?? payload.id };
+    case "save_transaction":
+      return { transaction: payload.transaction ?? payload };
+    case "delete_transaction":
+      return { transaction_id: payload.transaction_id ?? payload.id };
+    default:
+      return payload;
+  }
+};
+
 export const postAPI = async (baseUrl, action, payload) => {
+  const normalizedAction = normalizeAction(action);
+  const body = { action: normalizedAction, ...buildPayload(normalizedAction, payload) };
   try {
     return await fetch(baseUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, data: JSON.stringify(payload) })
+      body: JSON.stringify(body)
     });
   } catch (error) {
     console.error("API error:", error);
