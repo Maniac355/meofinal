@@ -511,7 +511,7 @@ function OrderDetailModal({ order, customer, products, transactions, onUpdate, o
   const [showVTP, setShowVTP] = useState(false);
   const [paymentOverride, setPaymentOverride] = useState(order.payment_override || "AUTO");
   const [proofUrl, setProofUrl] = useState(order.payment_proof_url || "");
-  const [notes, setNotes] = useState(order.notes || "");
+  const [notes, setNotes] = useState(order.note || "");
   const payment = calculatePaymentStatus(order, transactions);
   const baseItems = useMemo(() => normalizeOrderItemsForEdit(order.items), [order.items]);
   const matchedTransactions = useMemo(
@@ -571,7 +571,7 @@ function OrderDetailModal({ order, customer, products, transactions, onUpdate, o
       vtp_order_code: vtpCode,
       payment_override: paymentOverride,
       payment_proof_url: proofUrl,
-      notes: notes,
+      note: notes,
       items: editItems,
       total_amount: newTotal
     });
