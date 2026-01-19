@@ -32,16 +32,24 @@ const SEPAY_SHEET_NAME = 'Base';
  * ========================= */
 
 function parseItemsInput_(itemsInput) {
-  if (!itemsInput) return [];
+  if (itemsInput === undefined || itemsInput === null) {
+    throw new Error('items bị thiếu');
+  }
   if (Array.isArray(itemsInput)) return itemsInput;
 
   if (typeof itemsInput === 'string') {
     const s = itemsInput.trim();
-    if (!s) return [];
+    if (!s) throw new Error('items JSON không hợp lệ');
     try {
       const arr = JSON.parse(s);
-      return Array.isArray(arr) ? arr : [];
+      if (!Array.isArray(arr)) {
+        throw new Error('items JSON phải là mảng');
+      }
+      return arr;
     } catch (e) {
+      if (e.message === 'items JSON phải là mảng') {
+        throw e;
+      }
       throw new Error('items JSON không hợp lệ');
     }
   }
@@ -108,37 +116,26 @@ function calcTotalFromItems_(normalizedItems) {
 function prepareOrderForSave_(orderData) {
   const order = { ...(orderData || {}) };
 
-  // Normalize items (if provided)
-  // Nếu order.items không có -> giữ nguyên (không ép về [])
-  if (order.items !== undefined) {
-    const itemsNorm = normalizeItems_(order.items);
-    order.items = JSON.stringify(itemsNorm);
-    // Tính lại total_amount theo items (rule: total_amount = sum(q*p))
-    order.total_amount = calcTotalFromItems_(itemsNorm);
+  if (order.items === undefined || order.items === null) {
+    throw new Error('items bắt buộc khi lưu order');
   }
+
+  const itemsNorm = normalizeItems_(order.items);
+  order.items = JSON.stringify(itemsNorm);
+  // Tính lại total_amount theo items (rule: total_amount = sum(q*p))
+  order.total_amount = calcTotalFromItems_(itemsNorm);
 
   return order;
 }
 
 function parseAndNormalizeOrderForRead_(orderObj) {
   const order = { ...orderObj };
-  if (order.items && typeof order.items === 'string') {
-    try {
-      const parsed = JSON.parse(order.items);
-      // Luôn normalize để frontend luôn nhận chuẩn gọn
-      order.items = normalizeItems_(parsed);
-    } catch (e) {
-      order.items = [];
-    }
-  } else if (Array.isArray(order.items)) {
-    try {
-      order.items = normalizeItems_(order.items);
-    } catch (e) {
-      order.items = [];
-    }
-  } else {
-    order.items = [];
+  if (order.items === undefined || order.items === null) {
+    throw new Error('items bị thiếu trong dữ liệu order');
   }
+
+  // Luôn normalize để frontend luôn nhận chuẩn gọn
+  order.items = normalizeItems_(order.items);
 
   // Option: tính lại total để đồng bộ khi đọc (không ghi sheet)
   // Nếu bạn muốn giữ nguyên total_amount trong sheet thì có thể bỏ đoạn dưới
@@ -576,4 +573,10 @@ function testNormalizeItems() {
   const norm = normalizeItems_(legacy);
   Logger.log(JSON.stringify(norm)); // [{"id":"sach1","q":3,"p":225000},{"id":"sach3","q":1,"p":220000}]
   Logger.log(calcTotalFromItems_(norm)); // 3*225000 + 1*220000
+}
+
+function testNormalizeItemsJson() {
+  const json = '[{"product_id":"sach1","quantity":1,"unit_price":1000},{"id":"sach2","q":2,"p":500}]';
+  const norm = normalizeItems_(json);
+  Logger.log(JSON.stringify(norm));
 }

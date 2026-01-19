@@ -62,6 +62,34 @@ function generateId(prefix) {
   return id;
 }
 
+function normalizeOrderItemsForEdit(items = []) {
+  if (!Array.isArray(items)) return [];
+  return items.map(item => {
+    if (item?.product_id) {
+      const quantity = Number(item.quantity || 0);
+      const unitPrice = Number(item.unit_price || 0);
+      return {
+        ...item,
+        product_id: String(item.product_id),
+        quantity,
+        unit_price: unitPrice,
+        subtotal: unitPrice * quantity
+      };
+    }
+    if (item?.id) {
+      const quantity = Number(item.q || 0);
+      const unitPrice = Number(item.p || 0);
+      return {
+        product_id: String(item.id),
+        quantity,
+        unit_price: unitPrice,
+        subtotal: unitPrice * quantity
+      };
+    }
+    return null;
+  }).filter(Boolean);
+}
+
 // ============ ICONS ============
 const IconUsers = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>;
 const IconPackage = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>;
@@ -228,6 +256,8 @@ function OrderModal({ customers, products, onSave, onClose }) {
   const [newCust, setNewCust] = useState({ full_name: "", phone_number: "", address: "" });
   const [items, setItems] = useState([]);
   const [address, setAddress] = useState("");
+  const [shippingFee, setShippingFee] = useState(0);
+  const [orderNote, setOrderNote] = useState("");
   const [prodSearch, setProdSearch] = useState("");
 
   const activeProducts = products.filter(p => p.is_active === true || p.is_active === "TRUE");
@@ -254,6 +284,8 @@ function OrderModal({ customers, products, onSave, onClose }) {
       customer_id: mode === "existing" ? customer.customer_id : null,
       newCustomer: mode === "new" ? { ...newCust, customer_id: generateId("C"), created_at: new Date().toISOString().split("T")[0] } : null,
       shipping_address: address || newCust.address || customer?.address || "",
+      shipping_fee: Number(shippingFee) || 0,
+      note: orderNote,
       items, total_amount: total
     });
   };
@@ -310,6 +342,14 @@ function OrderModal({ customers, products, onSave, onClose }) {
               <div>
                 <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Địa chỉ giao</label>
                 <input value={address} onChange={e => setAddress(e.target.value)} placeholder="Địa chỉ giao hàng" className="w-full px-2.5 py-1.5 rounded border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm mt-1" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Phí ship</label>
+                <input type="number" min="0" value={shippingFee} onChange={e => setShippingFee(e.target.value)} placeholder="0" className="w-full px-2.5 py-1.5 rounded border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm mt-1" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Ghi chú đơn hàng</label>
+                <textarea rows={3} value={orderNote} onChange={e => setOrderNote(e.target.value)} placeholder="Nhập ghi chú..." className="w-full px-2.5 py-1.5 rounded border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm mt-1" />
               </div>
             </div>
             {/* Products */}
@@ -473,15 +513,16 @@ function OrderDetailModal({ order, customer, products, transactions, onUpdate, o
   const [proofUrl, setProofUrl] = useState(order.payment_proof_url || "");
   const [notes, setNotes] = useState(order.notes || "");
   const payment = calculatePaymentStatus(order, transactions);
+  const baseItems = useMemo(() => normalizeOrderItemsForEdit(order.items), [order.items]);
 
   // Editable items state
-  const [editItems, setEditItems] = useState(Array.isArray(order.items) ? [...order.items] : []);
+  const [editItems, setEditItems] = useState(() => normalizeOrderItemsForEdit(order.items));
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [prodSearch, setProdSearch] = useState("");
 
   // Calculate new total from editItems
   const newTotal = editItems.reduce((s, i) => s + i.subtotal, 0);
-  const hasChanges = JSON.stringify(editItems) !== JSON.stringify(order.items) || newTotal !== order.total_amount;
+  const hasChanges = JSON.stringify(editItems) !== JSON.stringify(baseItems) || newTotal !== order.total_amount;
 
   // Filter products for adding (exclude already added ones)
   const activeProducts = products.filter(p => p.is_active === true || p.is_active === "TRUE");
@@ -1301,9 +1342,11 @@ export default function App() {
       order_code: generateOrderCode(orders),
       customer_id: custId,
       shipping_address: data.shipping_address,
+      shipping_fee: data.shipping_fee,
       total_amount: data.total_amount,
       payment_override: "AUTO",
       shipping_status: "CHUA_GIAO",
+      note: data.note,
       created_at: new Date().toISOString().split("T")[0],
       items: data.items,
       items_json: JSON.stringify(data.items),
