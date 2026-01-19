@@ -131,11 +131,17 @@ function prepareOrderForSave_(orderData) {
 function parseAndNormalizeOrderForRead_(orderObj) {
   const order = { ...orderObj };
   if (order.items === undefined || order.items === null) {
-    throw new Error('items bị thiếu trong dữ liệu order');
+    order.items = [];
+    order.total_amount = calcTotalFromItems_(order.items);
+    return order;
   }
 
-  // Luôn normalize để frontend luôn nhận chuẩn gọn
-  order.items = normalizeItems_(order.items);
+  try {
+    // Luôn normalize để frontend luôn nhận chuẩn gọn
+    order.items = normalizeItems_(order.items);
+  } catch (e) {
+    order.items = [];
+  }
 
   // Option: tính lại total để đồng bộ khi đọc (không ghi sheet)
   // Nếu bạn muốn giữ nguyên total_amount trong sheet thì có thể bỏ đoạn dưới
