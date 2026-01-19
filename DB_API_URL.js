@@ -18,6 +18,139 @@ const SHEET_ID = '1XKzQTtPIXk5wMLptUU0boZJld2Y0jtaaziBk9p4xyPk';
 const SEPAY_SHEET_ID = '1E5U3DEP2nDrM3MAIf2JdkuopXGENj0wrdr3AHiTlPb8';
 const SEPAY_SHEET_NAME = 'Base';
 
+/** =========================
+ *  ITEMS NORMALIZATION (NEW)
+ *  Chuẩn gọn: [{id, q, p}]
+ *  - id: product_id (string)
+ *  - q : quantity (int > 0)
+ *  - p : unit_price (number >= 0)
+ *  - Gộp trùng theo (id,p)
+ *  - total_amount = sum(q*p)
+ *  - Hỗ trợ input legacy:
+ *      {product_id, quantity, unit_price, subtotal, product_name}
+ *      hoặc đã là {id,q,p}
+ * ========================= */
+
+function parseItemsInput_(itemsInput) {
+  if (!itemsInput) return [];
+  if (Array.isArray(itemsInput)) return itemsInput;
+
+  if (typeof itemsInput === 'string') {
+    const s = itemsInput.trim();
+    if (!s) return [];
+    try {
+      const arr = JSON.parse(s);
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      throw new Error('items JSON không hợp lệ');
+    }
+  }
+
+  // Nếu gửi nhầm kiểu (object, number...)
+  throw new Error('items phải là mảng hoặc JSON string');
+}
+
+function toCompactItem_(it, idx) {
+  // Accept both compact {id,q,p} and legacy {product_id,quantity,unit_price}
+  const rawId = (it && (it.id ?? it.product_id)) ?? '';
+  const id = String(rawId).trim();
+  if (!id) throw new Error(`items[${idx}].id (product_id) bắt buộc`);
+
+  const qRaw = (it && (it.q ?? it.quantity)) ?? null;
+  const pRaw = (it && (it.p ?? it.unit_price)) ?? null;
+
+  const q = Number(qRaw);
+  const p = Number(pRaw);
+
+  if (!Number.isFinite(q) || q <= 0 || Math.floor(q) !== q) {
+    throw new Error(`items[${idx}].q (quantity) phải là số nguyên > 0`);
+  }
+  if (!Number.isFinite(p) || p < 0) {
+    throw new Error(`items[${idx}].p (unit_price) phải là số >= 0`);
+  }
+
+  return { id, q, p };
+}
+
+function normalizeItems_(itemsInput) {
+  const arr = parseItemsInput_(itemsInput);
+
+  // Convert -> compact
+  const compact = arr.map((it, idx) => toCompactItem_(it, idx));
+
+  // Merge duplicates by (id,p)
+  const map = new Map(); // key: id||p
+  for (const it of compact) {
+    const key = `${it.id}||${it.p}`;
+    const prev = map.get(key);
+    if (prev) {
+      prev.q += it.q;
+    } else {
+      map.set(key, { id: it.id, q: it.q, p: it.p });
+    }
+  }
+
+  // Sort stable for readability (optional)
+  const out = Array.from(map.values()).sort((a, b) => {
+    if (a.id < b.id) return -1;
+    if (a.id > b.id) return 1;
+    return a.p - b.p;
+  });
+
+  return out;
+}
+
+function calcTotalFromItems_(normalizedItems) {
+  if (!Array.isArray(normalizedItems)) return 0;
+  return normalizedItems.reduce((sum, it) => sum + (Number(it.q) * Number(it.p)), 0);
+}
+
+function prepareOrderForSave_(orderData) {
+  const order = { ...(orderData || {}) };
+
+  // Normalize items (if provided)
+  // Nếu order.items không có -> giữ nguyên (không ép về [])
+  if (order.items !== undefined) {
+    const itemsNorm = normalizeItems_(order.items);
+    order.items = JSON.stringify(itemsNorm);
+    // Tính lại total_amount theo items (rule: total_amount = sum(q*p))
+    order.total_amount = calcTotalFromItems_(itemsNorm);
+  }
+
+  return order;
+}
+
+function parseAndNormalizeOrderForRead_(orderObj) {
+  const order = { ...orderObj };
+  if (order.items && typeof order.items === 'string') {
+    try {
+      const parsed = JSON.parse(order.items);
+      // Luôn normalize để frontend luôn nhận chuẩn gọn
+      order.items = normalizeItems_(parsed);
+    } catch (e) {
+      order.items = [];
+    }
+  } else if (Array.isArray(order.items)) {
+    try {
+      order.items = normalizeItems_(order.items);
+    } catch (e) {
+      order.items = [];
+    }
+  } else {
+    order.items = [];
+  }
+
+  // Option: tính lại total để đồng bộ khi đọc (không ghi sheet)
+  // Nếu bạn muốn giữ nguyên total_amount trong sheet thì có thể bỏ đoạn dưới
+  order.total_amount = calcTotalFromItems_(order.items);
+
+  return order;
+}
+
+/** =========================
+ *  HTTP HANDLERS
+ * ========================= */
+
 function doGet(e) {
   const action = e.parameter.action || 'ping';
 
@@ -46,7 +179,7 @@ function doGet(e) {
         return getSheetData('Products');
 
       case 'get_orders':
-        return getSheetData('Orders');
+        return getSheetData('Orders'); // sẽ parse items trong getSheetData()
 
       case 'get_transactions':
         return getSheetData('Transactions');
@@ -67,12 +200,11 @@ function doGet(e) {
         return deleteFromSheet('Products', data.product_id, 'product_id');
 
       case 'save_order':
-      case 'upsert_order':
+      case 'upsert_order': {
         const orderData = data.data || data.order || {};
-        if (Array.isArray(orderData.items)) {
-          orderData.items = JSON.stringify(orderData.items);
-        }
-        return saveToSheet('Orders', orderData, 'order_id');
+        const prepared = prepareOrderForSave_(orderData);
+        return saveToSheet('Orders', prepared, 'order_id');
+      }
 
       case 'delete_order':
         return deleteFromSheet('Orders', data.order_id, 'order_id');
@@ -95,28 +227,25 @@ function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
     const action = data.action;
-    
+
     switch (action) {
       case 'save_customer':
         return saveToSheet('Customers', data.customer, 'customer_id');
-      
+
       case 'delete_customer':
         return deleteFromSheet('Customers', data.customer_id, 'customer_id');
-      
+
       case 'save_product':
         return saveToSheet('Products', data.product, 'product_id');
-      
+
       case 'delete_product':
         return deleteFromSheet('Products', data.product_id, 'product_id');
-      
-      case 'save_order':
-        // Convert items array to JSON string for storage
-        const orderData = { ...data.order };
-        if (Array.isArray(orderData.items)) {
-          orderData.items = JSON.stringify(orderData.items);
-        }
-        return saveToSheet('Orders', orderData, 'order_id');
-      
+
+      case 'save_order': {
+        const prepared = prepareOrderForSave_(data.order);
+        return saveToSheet('Orders', prepared, 'order_id');
+      }
+
       case 'delete_order':
         return deleteFromSheet('Orders', data.order_id, 'order_id');
 
@@ -140,24 +269,22 @@ function doPost(e) {
   }
 }
 
+/** =========================
+ *  READ HELPERS
+ * ========================= */
+
 function getAllData() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
-  
+
   const customers = sheetToArray(ss.getSheetByName('Customers'));
   const products = sheetToArray(ss.getSheetByName('Products'));
+
   const orders = sheetToArray(ss.getSheetByName('Orders')).map(order => {
-    // Parse items from JSON string
-    if (order.items && typeof order.items === 'string') {
-      try {
-        order.items = JSON.parse(order.items);
-      } catch (e) {
-        order.items = [];
-      }
-    }
-    return order;
+    return parseAndNormalizeOrderForRead_(order);
   });
+
   const transactions = sheetToArray(ss.getSheetByName('Transactions'));
-  
+
   return jsonResponse({
     ok: true,
     data: { customers, products, orders, transactions }
@@ -167,71 +294,85 @@ function getAllData() {
 function getSheetData(sheetName) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const sheet = ss.getSheetByName(sheetName);
-  
+
   if (!sheet) {
     return jsonResponse({ ok: false, error: `Sheet "${sheetName}" not found` });
   }
-  
-  const data = sheetToArray(sheet);
+
+  let data = sheetToArray(sheet);
+
+  // Special handling for Orders: parse+normalize items
+  if (sheetName === 'Orders') {
+    data = data.map(order => parseAndNormalizeOrderForRead_(order));
+  }
+
   return jsonResponse({ ok: true, data });
 }
 
 function sheetToArray(sheet) {
   if (!sheet) return [];
-  
+
   const data = sheet.getDataRange().getValues();
   if (data.length < 2) return []; // No data rows
-  
+
   const headers = data[0];
   const rows = data.slice(1);
-  
+
   return rows.map(row => {
     const obj = {};
     headers.forEach((header, i) => {
       let value = row[i];
+
       // Convert Date objects to ISO string
       if (value instanceof Date) {
         value = value.toISOString().split('T')[0];
       }
+
       // Handle boolean
       if (header === 'is_active') {
         value = value === true || value === 'true' || value === 'TRUE';
       }
-      // Handle numbers
-      if (['price', 'total_amount', 'amount', 'quantity', 'unit_price', 'subtotal'].includes(header)) {
+
+      // Handle numbers (sheet columns only)
+      if (['price', 'total_amount', 'amount', 'shipping_fee'].includes(header)) {
         value = Number(value) || 0;
       }
+
       obj[header] = value;
     });
     return obj;
   }).filter(obj => obj[headers[0]]); // Filter out empty rows
 }
 
+/** =========================
+ *  WRITE HELPERS
+ * ========================= */
+
 function saveToSheet(sheetName, data, idField) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const sheet = ss.getSheetByName(sheetName);
-  
+
   if (!sheet) {
     return jsonResponse({ ok: false, error: `Sheet "${sheetName}" not found` });
   }
-  
+
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const dataRange = sheet.getDataRange().getValues();
-  
+
   // Find existing row
   const idIndex = headers.indexOf(idField);
   let rowIndex = -1;
-  
+
   for (let i = 1; i < dataRange.length; i++) {
     if (dataRange[i][idIndex] === data[idField]) {
       rowIndex = i + 1; // Sheet rows are 1-indexed
       break;
     }
   }
-  
+
   // Prepare row data
   const rowData = headers.map(header => data[header] !== undefined ? data[header] : '');
-  
+
   if (rowIndex > 0) {
     // Update existing row
     sheet.getRange(rowIndex, 1, 1, headers.length).setValues([rowData]);
@@ -239,35 +380,35 @@ function saveToSheet(sheetName, data, idField) {
     // Append new row
     sheet.appendRow(rowData);
   }
-  
+
   return jsonResponse({ ok: true, data });
 }
 
 function deleteFromSheet(sheetName, id, idField) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const sheet = ss.getSheetByName(sheetName);
-  
+
   if (!sheet) {
     return jsonResponse({ ok: false, error: `Sheet "${sheetName}" not found` });
   }
-  
+
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const dataRange = sheet.getDataRange().getValues();
   const idIndex = headers.indexOf(idField);
-  
+
   for (let i = 1; i < dataRange.length; i++) {
     if (dataRange[i][idIndex] === id) {
       sheet.deleteRow(i + 1);
       return jsonResponse({ ok: true, deleted: id });
     }
   }
-  
+
   return jsonResponse({ ok: false, error: 'Record not found' });
 }
 
 function saveAllData(data) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
-  
+
   if (data.customers) {
     replaceSheetData(ss.getSheetByName('Customers'), data.customers);
   }
@@ -275,26 +416,30 @@ function saveAllData(data) {
     replaceSheetData(ss.getSheetByName('Products'), data.products);
   }
   if (data.orders) {
-    const orders = data.orders.map(order => ({
-      ...order,
-      items: JSON.stringify(order.items || [])
-    }));
+    const orders = data.orders.map(order => {
+      // Normalize items + recalc total_amount
+      const prepared = prepareOrderForSave_(order);
+      // prepareOrderForSave_ chỉ xử lý items nếu items tồn tại
+      // Nếu bạn muốn ép items luôn có, uncomment:
+      // if (prepared.items === undefined) prepared.items = JSON.stringify([]);
+      return prepared;
+    });
     replaceSheetData(ss.getSheetByName('Orders'), orders);
   }
-  
+
   return jsonResponse({ ok: true, message: 'All data saved' });
 }
 
 function replaceSheetData(sheet, dataArray) {
   if (!sheet || !dataArray || dataArray.length === 0) return;
-  
+
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  
+
   // Clear existing data (keep headers)
   if (sheet.getLastRow() > 1) {
     sheet.deleteRows(2, sheet.getLastRow() - 1);
   }
-  
+
   // Write new data
   const rows = dataArray.map(item => headers.map(h => item[h] !== undefined ? item[h] : ''));
   if (rows.length > 0) {
@@ -416,4 +561,19 @@ function jsonResponse(data) {
 // Test function
 function test() {
   Logger.log(getAllData().getContent());
+}
+
+/**
+ * QUICK TEST: normalize items
+ * Chạy hàm này trong Apps Script editor để test normalize.
+ */
+function testNormalizeItems() {
+  const legacy = [
+    { product_id: "sach1", product_name: "A", quantity: 1, unit_price: 225000, subtotal: 225000 },
+    { product_id: "sach1", quantity: 2, unit_price: 225000 },
+    { id: "sach3", q: 1, p: 220000 }
+  ];
+  const norm = normalizeItems_(legacy);
+  Logger.log(JSON.stringify(norm)); // [{"id":"sach1","q":3,"p":225000},{"id":"sach3","q":1,"p":220000}]
+  Logger.log(calcTotalFromItems_(norm)); // 3*225000 + 1*220000
 }
