@@ -503,7 +503,7 @@ function VTPTrackingModal({ orderCode, onClose }) {
   );
 }
 
-function OrderDetailModal({ order, customer, products, transactions, onUpdate, onDelete, onClose }) {
+function OrderDetailModal({ order, customer, products, transactions, onUpdate, onDelete, onMatchTransaction, onUnmatchTransaction, onClose }) {
   const [shipping, setShipping] = useState(order.shipping_status || "CHUA_GIAO");
   const [vtpCode, setVtpCode] = useState(order.vtp_order_code || "");
   const [showQR, setShowQR] = useState(false);
@@ -514,11 +514,16 @@ function OrderDetailModal({ order, customer, products, transactions, onUpdate, o
   const [notes, setNotes] = useState(order.notes || "");
   const payment = calculatePaymentStatus(order, transactions);
   const baseItems = useMemo(() => normalizeOrderItemsForEdit(order.items), [order.items]);
+  const matchedTransactions = useMemo(
+    () => transactions.filter(tx => tx.order_code === order.order_code),
+    [transactions, order.order_code]
+  );
 
   // Editable items state
   const [editItems, setEditItems] = useState(() => normalizeOrderItemsForEdit(order.items));
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [prodSearch, setProdSearch] = useState("");
+  const [showMatchTransaction, setShowMatchTransaction] = useState(false);
 
   // Calculate new total from editItems
   const newTotal = editItems.reduce((s, i) => s + i.subtotal, 0);
@@ -639,6 +644,42 @@ function OrderDetailModal({ order, customer, products, transactions, onUpdate, o
                       rows={3}
                       className="w-full px-4 py-3 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm resize-none focus:border-blue-500 outline-none"
                     />
+                  </div>
+                  {/* Matched Transactions */}
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                        <IconBanknotes className="w-4 h-4" /> Giao dịch đã khớp
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowMatchTransaction(true)}
+                        className="px-2.5 py-1 text-xs rounded-lg bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900 cursor-pointer"
+                      >
+                        Chọn giao dịch
+                      </button>
+                    </div>
+                    {matchedTransactions.length > 0 ? (
+                      <div className="space-y-2">
+                        {matchedTransactions.map(tx => (
+                          <div key={tx.transaction_id || tx.reference_code} className="flex items-center justify-between gap-3 bg-white dark:bg-slate-700 rounded-lg border dark:border-slate-600 px-3 py-2">
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">+{formatCurrency(tx.amount)}</div>
+                              <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{tx.bank} • {tx.transaction_time}</div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => onUnmatchTransaction(tx)}
+                              className="px-2 py-1 text-xs rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 cursor-pointer"
+                            >
+                              Xóa khớp
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-slate-500 dark:text-slate-400">Chưa khớp giao dịch.</div>
+                    )}
                   </div>
                 </div>
 
@@ -891,7 +932,84 @@ function OrderDetailModal({ order, customer, products, transactions, onUpdate, o
       {showQR && <QRModal order={order} onClose={() => setShowQR(false)} />}
       {showVTP && vtpCode && <VTPTrackingModal orderCode={vtpCode} onClose={() => setShowVTP(false)} />}
       {showDelete && <ConfirmModal title="Xóa đơn hàng?" message={`Xóa đơn ${order.order_code}?`} onConfirm={() => { onDelete(order.order_id); onClose(); }} onClose={() => setShowDelete(false)} />}
+      {showMatchTransaction && (
+        <MatchTransactionModal
+          order={order}
+          transactions={transactions}
+          onMatch={onMatchTransaction}
+          onClose={() => setShowMatchTransaction(false)}
+        />
+      )}
     </>
+  );
+}
+
+function MatchTransactionModal({ order, transactions, onMatch, onClose }) {
+  const [search, setSearch] = useState("");
+  const availableTx = transactions.filter(tx => !tx.order_code);
+  const filteredTx = availableTx.filter(tx => {
+    const q = search.toLowerCase();
+    return !q ||
+      tx.content?.toLowerCase().includes(q) ||
+      tx.transaction_code?.toLowerCase().includes(q) ||
+      tx.reference_code?.toLowerCase().includes(q) ||
+      String(tx.amount || "").includes(q);
+  });
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-lg w-full max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center px-5 py-3 border-b dark:border-slate-700">
+          <div>
+            <h3 className="font-semibold dark:text-white">Chọn giao dịch</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Đơn hàng: {order.order_code}</p>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer">
+            <IconX className="w-4 h-4 dark:text-slate-400" />
+          </button>
+        </div>
+        <div className="px-5 py-3 border-b dark:border-slate-700">
+          <div className="relative">
+            <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Tìm giao dịch..."
+              className="w-full pl-9 pr-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm"
+            />
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-3">
+          {filteredTx.length > 0 ? (
+            <div className="space-y-2">
+              {filteredTx.map(tx => (
+                <button
+                  key={tx.transaction_id || tx.reference_code}
+                  onClick={() => { onMatch(tx, order); onClose(); }}
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-transparent hover:border-blue-200 dark:hover:border-blue-800 text-left cursor-pointer"
+                >
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="font-semibold text-emerald-600 dark:text-emerald-400">+{formatCurrency(tx.amount)}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">{tx.bank} • {tx.transaction_time}</div>
+                      <div className="text-xs text-slate-400 truncate max-w-xs">{tx.content}</div>
+                    </div>
+                    <div className="text-right text-xs text-slate-500 dark:text-slate-400">
+                      {Number(tx.amount) === Number(order.total_amount) ? "Khớp số tiền" : `Chênh ${formatCurrency(Number(tx.amount || 0) - Number(order.total_amount || 0))}`}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+              <p className="text-sm">Không có giao dịch phù hợp</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1033,7 +1151,7 @@ function MatchOrderModal({ transaction, orders, onMatch, onClose }) {
   );
 }
 
-function TransactionsModal({ transactions, orders, onSaveTransaction, onClose }) {
+function TransactionsModal({ transactions, orders, onSaveTransaction, onUnmatchTransaction, onClose }) {
   const [showAdd, setShowAdd] = useState(false);
   const [matchingTx, setMatchingTx] = useState(null);
 
@@ -1078,12 +1196,19 @@ function TransactionsModal({ transactions, orders, onSaveTransaction, onClose })
                         <div className="text-xs text-slate-600 dark:text-slate-400 mt-1 max-w-md truncate">{tx.content}</div>
                         <div className="text-xs text-slate-400">{tx.bank} • {tx.transaction_time}</div>
                       </div>
-                      {!tx.order_code && (
+                      {!tx.order_code ? (
                         <button
                           onClick={() => setMatchingTx(tx)}
                           className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 rounded hover:bg-blue-200 dark:hover:bg-blue-900 cursor-pointer"
                         >
                           Khớp đơn
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => onUnmatchTransaction(tx)}
+                          className="px-2 py-1 text-xs text-red-600 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-900/30 cursor-pointer"
+                        >
+                          Xóa khớp
                         </button>
                       )}
                     </div>
@@ -1398,6 +1523,15 @@ export default function App() {
     };
     await saveTransaction(updated);
     setMatchingTx(null);
+  }
+
+  async function handleUnmatchTransaction(transaction) {
+    const updated = {
+      ...transaction,
+      order_code: "",
+      matched_at: ""
+    };
+    await saveTransaction(updated);
   }
 
   // Stats
@@ -1852,12 +1986,19 @@ export default function App() {
                           )}
                         </td>
                         <td className="px-4 py-2.5 text-right">
-                          {!tx.order_code && (
+                          {!tx.order_code ? (
                             <button
                               onClick={() => setMatchingTx(tx)}
                               className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 rounded hover:bg-blue-200 dark:hover:bg-blue-900 cursor-pointer"
                             >
                               Khớp đơn
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleUnmatchTransaction(tx)}
+                              className="px-2 py-1 text-xs text-red-600 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-900/30 cursor-pointer"
+                            >
+                              Xóa khớp
                             </button>
                           )}
                         </td>
@@ -1880,8 +2021,28 @@ export default function App() {
       {showCustomer && <CustomerModal customer={editCustomer} onSave={saveCustomer} onClose={() => { setShowCustomer(false); setEditCustomer(null); }} />}
       {showProduct && <ProductModal product={editProduct} onSave={saveProduct} onClose={() => { setShowProduct(false); setEditProduct(null); }} />}
       {showOrder && <OrderModal customers={customers} products={products} onSave={createOrder} onClose={() => setShowOrder(false)} />}
-      {selectedOrder && <OrderDetailModal order={selectedOrder} customer={customers.find(c => c.customer_id === selectedOrder.customer_id)} products={products} transactions={transactions} onUpdate={updateOrder} onDelete={deleteOrder} onClose={() => setSelectedOrder(null)} />}
-      {showTx && <TransactionsModal transactions={transactions} orders={orders} onSaveTransaction={saveTransaction} onClose={() => setShowTx(false)} />}
+      {selectedOrder && (
+        <OrderDetailModal
+          order={selectedOrder}
+          customer={customers.find(c => c.customer_id === selectedOrder.customer_id)}
+          products={products}
+          transactions={transactions}
+          onUpdate={updateOrder}
+          onDelete={deleteOrder}
+          onMatchTransaction={handleMatchOrder}
+          onUnmatchTransaction={handleUnmatchTransaction}
+          onClose={() => setSelectedOrder(null)}
+        />
+      )}
+      {showTx && (
+        <TransactionsModal
+          transactions={transactions}
+          orders={orders}
+          onSaveTransaction={saveTransaction}
+          onUnmatchTransaction={handleUnmatchTransaction}
+          onClose={() => setShowTx(false)}
+        />
+      )}
       {matchingTx && <MatchOrderModal transaction={matchingTx} orders={orders} onMatch={handleMatchOrder} onClose={() => setMatchingTx(null)} />}
       {deleteConfirm && (
         <ConfirmModal
