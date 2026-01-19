@@ -292,7 +292,7 @@ function OrderModal({ customers, products, onSave, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-3xl w-full max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center px-5 py-3 border-b dark:border-slate-700">
           <h3 className="font-semibold dark:text-white">Tạo Đơn Hàng</h3>
           <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer"><IconX className="w-4 h-4 dark:text-slate-400" /></button>
