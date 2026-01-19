@@ -44,7 +44,8 @@ export const postAPI = async (baseUrl, action, payload) => {
   try {
     return await fetch(baseUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(body)
     });
   } catch (error) {
