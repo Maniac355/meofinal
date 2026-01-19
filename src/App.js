@@ -48,6 +48,7 @@ function txKey(tx) {
     .join("|");
 }
 
+// Session-scoped guard to reduce ID collisions within a single client run.
 const generatedIds = new Set();
 
 function generateId(prefix) {
