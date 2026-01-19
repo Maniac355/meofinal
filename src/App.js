@@ -1104,6 +1104,16 @@ export default function App() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [matchingTx, setMatchingTx] = useState(null);
 
+  const parseItemsJson = (itemsJson, fallbackItems = [], orderCode = "") => {
+    if (!itemsJson) return fallbackItems;
+    try {
+      return JSON.parse(itemsJson);
+    } catch (error) {
+      console.warn("Failed to parse items_json", { orderCode, error });
+      return fallbackItems;
+    }
+  };
+
   // Load DB data function (reusable)
   const loadData = useCallback(async (isManual = false) => {
     if (loadInFlightRef.current && !isManual) return;
@@ -1123,7 +1133,7 @@ export default function App() {
         // Track new orders
         const newOrders = (dbJson.data.orders || []).map(o => ({
           ...o,
-          items: o.items_json ? JSON.parse(o.items_json) : (o.items || []),
+          items: parseItemsJson(o.items_json, o.items || [], o.order_code),
           total_amount: Number(o.total_amount) || 0,
         }));
 
