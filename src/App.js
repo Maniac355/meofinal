@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import PaymentBadge from "./components/PaymentBadge";
+import ShippingBadge from "./components/ShippingBadge";
+import { getAPI, postAPI } from "./api/api";
+import formatCurrency from "./utils/formatCurrency";
+import calculatePaymentStatus from "./utils/paymentStatus";
 
 // ============ API URLS ============
 const DB_API_URL = "https://script.google.com/macros/s/AKfycby_YKTsZhgyGmHtGHZwAqOXkC4PplwoYN6y01LlIY7PSTyFDxcs_xDiWSEvaDSE9FCZ/exec";
@@ -6,17 +11,21 @@ const SEPAY_API_URL = "https://script.google.com/macros/s/AKfycbyzXm0kdoTcxI8gfC
 const VTP_API_URL = "https://script.google.com/macros/s/AKfycbxuIMd2HH4zCW0KzSHPSCzk68oT6l6zOzItjLiwBdBpzn2TrzswDGnLWgwDcuhk1U4W/exec";
 
 // ============ UTILITIES ============
-function formatCurrency(amount) {
-  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount || 0);
-}
-
 function generateOrderCode(orders) {
   const maxNum = orders.reduce((max, o) => {
     const match = o.order_code?.match(/DH(\d+)/);
     const num = match ? parseInt(match[1], 10) : 0;
     return num > max ? num : max;
   }, 0);
-  return `DH${String(maxNum + 1).padStart(4, "0")}`;
+  const existingCodes = new Set(orders.map(o => o.order_code).filter(Boolean));
+  const timeSeed = Number(String(Date.now()).slice(-4));
+  let nextNum = Math.max(maxNum + 1, timeSeed);
+  let code = `DH${String(nextNum).padStart(4, "0")}`;
+  while (existingCodes.has(code)) {
+    nextNum += 1;
+    code = `DH${String(nextNum).padStart(4, "0")}`;
+  }
+  return code;
 }
 
 function txKey(tx) {
@@ -39,40 +48,17 @@ function txKey(tx) {
     .join("|");
 }
 
+const generatedIds = new Set();
+
 function generateId(prefix) {
-  return `${prefix}${Date.now().toString(36)}`;
-}
-
-function normalizeText(input) {
-  return String(input || "").toLowerCase().trim()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function contentHasOrderCode(content, orderCode) {
-  if (!orderCode) return false;
-  const code = normalizeText(orderCode);
-  const tokens = normalizeText(content).split(" ");
-  return tokens.includes(code);
-}
-
-function calculatePaymentStatus(order, transactions) {
-  if (order.payment_override && order.payment_override !== "AUTO") {
-    return { status: order.payment_override, received: 0, diff: 0, tip: 0 };
-  }
-  // Match by: 1) manually matched order_code OR 2) content contains order code
-  const matching = transactions.filter(t =>
-    t.order_code === order.order_code || contentHasOrderCode(t.content, order.order_code)
-  );
-  const totalReceived = matching.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-  const orderTotal = Number(order.total_amount) || 0;
-  const diff = totalReceived - orderTotal;
-  const tip = diff > 0 ? diff : 0;
-
-  if (totalReceived === 0) return { status: "CHUA_CHUYEN", received: 0, diff: 0, tip: 0 };
-  if (totalReceived < orderTotal) return { status: "THIEU", received: totalReceived, diff, tip: 0 };
-  if (totalReceived === orderTotal) return { status: "DU", received: totalReceived, diff: 0, tip: 0 };
-  return { status: "THUA", received: totalReceived, diff, tip };
+  let id = "";
+  do {
+    const timePart = Date.now().toString(36);
+    const randomPart = Math.random().toString(36).slice(2, 6);
+    id = `${prefix}${timePart}${randomPart}`;
+  } while (generatedIds.has(id));
+  generatedIds.add(id);
+  return id;
 }
 
 // ============ ICONS ============
@@ -116,27 +102,6 @@ const SHIPPING_OPTIONS = [
 ];
 
 // ============ COMPONENTS ============
-function PaymentBadge({ order, transactions }) {
-  const { status, diff } = calculatePaymentStatus(order, transactions);
-  const config = {
-    CHUA_CHUYEN: { label: "Chưa chuyển", bg: "bg-red-50", text: "text-red-700" },
-    THIEU: { label: `Thiếu ${formatCurrency(Math.abs(diff))}`, bg: "bg-red-50", text: "text-red-700" },
-    DU: { label: "Đã chuyển", bg: "bg-emerald-50", text: "text-emerald-700" },
-    THUA: { label: `Tip +${formatCurrency(diff)}`, bg: "bg-pink-50", text: "text-pink-700" },
-  }[status] || { label: status, bg: "bg-slate-100", text: "text-slate-600" };
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>{config.label}</span>;
-}
-
-function ShippingBadge({ status }) {
-  const config = {
-    CHUA_GIAO: { label: "Chưa giao", bg: "bg-red-50", text: "text-red-700" },
-    DANG_GIAO: { label: "Đang giao", bg: "bg-blue-50", text: "text-blue-700" },
-    VIETTEL_POST: { label: "Viettel Post", bg: "bg-orange-50", text: "text-orange-700" },
-    DA_GIAO: { label: "Đã giao", bg: "bg-emerald-50", text: "text-emerald-700" },
-  }[status] || { label: status || "Chưa giao", bg: "bg-red-50", text: "text-red-700" };
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>{config.label}</span>;
-}
-
 function FilterDropdown({ label, icon: Icon, value, options, onChange }) {
   const [open, setOpen] = useState(false);
   const selected = options.find(o => o.value === value) || options[0];
@@ -1116,6 +1081,7 @@ export default function App() {
   const [lastSync, setLastSync] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [newOrdersCount, setNewOrdersCount] = useState(0);
+  const loadInFlightRef = useRef(false);
 
   // Filters
   const [filterPayment, setFilterPayment] = useState("");
@@ -1156,14 +1122,25 @@ export default function App() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [matchingTx, setMatchingTx] = useState(null);
 
+  const parseItemsJson = (itemsJson, fallbackItems = [], orderCode = "") => {
+    if (!itemsJson) return fallbackItems;
+    try {
+      return JSON.parse(itemsJson);
+    } catch (error) {
+      console.warn("Failed to parse items_json", { orderCode, error });
+      return fallbackItems;
+    }
+  };
+
   // Load DB data function (reusable)
   const loadData = useCallback(async (isManual = false) => {
-    if (syncing && !isManual) return;
+    if (loadInFlightRef.current && !isManual) return;
+    loadInFlightRef.current = true;
     setSyncing(true);
     try {
       // Load DB data and SePay transactions in parallel
       const [dbRes, sepayRes] = await Promise.all([
-        fetch(`${DB_API_URL}?action=get_all`),
+        getAPI(DB_API_URL, "get_all"),
         fetch(`${SEPAY_API_URL}?key=nhtavantmp`)
       ]);
 
@@ -1174,7 +1151,7 @@ export default function App() {
         // Track new orders
         const newOrders = (dbJson.data.orders || []).map(o => ({
           ...o,
-          items: o.items_json ? JSON.parse(o.items_json) : (o.items || []),
+          items: parseItemsJson(o.items_json, o.items || [], o.order_code),
           total_amount: Number(o.total_amount) || 0,
         }));
 
@@ -1237,17 +1214,21 @@ export default function App() {
 
         setLastSync(new Date());
       }
-    } catch (e) { console.error("Sync error:", e); }
-    setSyncing(false);
-    setLoading(false);
-  }, [syncing]);
+    } catch (e) {
+      console.error("Sync error:", e);
+    } finally {
+      loadInFlightRef.current = false;
+      setSyncing(false);
+      setLoading(false);
+    }
+  }, []);
 
   // Initial load + Auto sync every 10s
   useEffect(() => {
     loadData();
     const id = setInterval(() => loadData(false), SYNC_INTERVAL);
     return () => clearInterval(id);
-  }, []);
+  }, [loadData]);
 
   
   // Manual sync
@@ -1261,19 +1242,6 @@ export default function App() {
     if (tab === "orders") setNewOrdersCount(0);
   }, [tab]);
 
-  // API helper - send data via URL params to avoid CORS issues
-  const postAPI = async (action, data) => {
-    try {
-      const params = new URLSearchParams({
-        action,
-        data: JSON.stringify(data)
-      });
-      await fetch(`${DB_API_URL}?${params.toString()}`);
-    } catch (e) {
-      console.error("API error:", e);
-    }
-  };
-
   // Save helpers
   async function saveCustomer(data) {
     setShowCustomer(false);
@@ -1283,13 +1251,13 @@ export default function App() {
     } else {
       setCustomers([...customers, data]);
     }
-    await postAPI("upsert_customer", { action: "upsert_customer", data });
+    await postAPI(DB_API_URL, "upsert_customer", { action: "upsert_customer", data });
   }
 
   async function deleteCustomer(id) {
     setCustomers(customers.filter(c => c.customer_id !== id));
     setDeleteConfirm(null);
-    await postAPI("delete_customer", { action: "delete_customer", customer_id: id });
+    await postAPI(DB_API_URL, "delete_customer", { action: "delete_customer", customer_id: id });
   }
 
   async function saveProduct(data) {
@@ -1300,13 +1268,13 @@ export default function App() {
     } else {
       setProducts([...products, data]);
     }
-    await postAPI("upsert_product", { action: "upsert_product", data });
+    await postAPI(DB_API_URL, "upsert_product", { action: "upsert_product", data });
   }
 
   async function deleteProduct(id) {
     setProducts(products.filter(p => p.product_id !== id));
     setDeleteConfirm(null);
-    await postAPI("delete_product", { action: "delete_product", product_id: id });
+    await postAPI(DB_API_URL, "delete_product", { action: "delete_product", product_id: id });
   }
 
   async function createOrder(data) {
@@ -1315,7 +1283,7 @@ export default function App() {
     if (data.newCustomer) {
       setCustomers(prev => [...prev, data.newCustomer]);
       custId = data.newCustomer.customer_id;
-      await postAPI("upsert_customer", { action: "upsert_customer", data: data.newCustomer });
+      await postAPI(DB_API_URL, "upsert_customer", { action: "upsert_customer", data: data.newCustomer });
     }
     const newOrder = {
       order_id: generateId("O"),
@@ -1330,18 +1298,18 @@ export default function App() {
       items_json: JSON.stringify(data.items),
     };
     setOrders([newOrder, ...orders]);
-    await postAPI("upsert_order", { action: "upsert_order", data: newOrder });
+    await postAPI(DB_API_URL, "upsert_order", { action: "upsert_order", data: newOrder });
   }
 
   async function updateOrder(data) {
     const toSave = { ...data, items_json: JSON.stringify(data.items || []), vtp_order_code: data.vtp_order_code || "" };
     setOrders(orders.map(o => o.order_id === data.order_id ? toSave : o));
-    await postAPI("upsert_order", { action: "upsert_order", data: toSave });
+    await postAPI(DB_API_URL, "upsert_order", { action: "upsert_order", data: toSave });
   }
 
   async function deleteOrder(id) {
     setOrders(orders.filter(o => o.order_id !== id));
-    await postAPI("delete_order", { action: "delete_order", order_id: id });
+    await postAPI(DB_API_URL, "delete_order", { action: "delete_order", order_id: id });
   }
 
   async function saveTransaction(transaction) {
@@ -1362,7 +1330,7 @@ export default function App() {
       return [transaction, ...prev];
     });
     // Save to API
-    await postAPI("save_transaction", { action: "save_transaction", transaction });
+    await postAPI(DB_API_URL, "save_transaction", { action: "save_transaction", transaction });
   }
 
   // Handle match order from SePay tab
