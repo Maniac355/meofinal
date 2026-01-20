@@ -178,6 +178,10 @@ function getLoginToken_() {
   }
 }
 
+function getLoginToken() {
+  return getLoginToken_();
+}
+
 function getOwnerToken_(loginToken) {
   var username = PropertiesService.getScriptProperties().getProperty('VTP_USERNAME');
   var password = PropertiesService.getScriptProperties().getProperty('VTP_PASSWORD');
@@ -218,6 +222,10 @@ function getOwnerToken_(loginToken) {
   }
 }
 
+function getOwnerToken(loginToken) {
+  return getOwnerToken_(loginToken);
+}
+
 function getToken_() {
   var stored = getStoredToken_();
   if (stored) return stored;
@@ -237,7 +245,7 @@ function getToken_() {
 function registerOrderHook_(orderCode, message) {
   var token = getToken_();
   if (!token) {
-    return { ok: false, status: 500, message: 'Unable to obtain VTP token' };
+    throw new Error('Unable to obtain VTP token');
   }
 
   var upstream = callViettelPostRegisterHook_(token, orderCode, message);
@@ -249,15 +257,19 @@ function registerOrderHook_(orderCode, message) {
   clearStoredToken_();
   var login = getLoginToken_();
   if (!login.ok) {
-    return upstream;
+    throw new Error('VTP token refresh failed at login: ' + (login.message || 'unknown error'));
   }
   var owner = getOwnerToken_(login.token);
   if (!owner.ok) {
-    return upstream;
+    throw new Error('VTP token refresh failed at ownerconnect: ' + (owner.message || 'unknown error'));
   }
   storeToken_(owner.token, owner.exp);
 
-  return callViettelPostRegisterHook_(owner.token, orderCode, message);
+  var retried = callViettelPostRegisterHook_(owner.token, orderCode, message);
+  if (!retried.ok) {
+    throw new Error('VTP registerOrderHook retry failed: ' + (retried.text || retried.message || 'unknown error'));
+  }
+  return retried;
 }
 
 function isTokenInvalid_(upstream) {
