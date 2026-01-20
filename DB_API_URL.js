@@ -206,7 +206,9 @@ function doGet(e) {
       case 'upsert_order': {
         const orderData = data.data || data.order || {};
         const prepared = prepareOrderForSave_(orderData);
-        return saveToSheet('Orders', prepared, 'order_id');
+        const response = saveToSheet('Orders', prepared, 'order_id');
+        triggerVtpAutoTracking_(prepared);
+        return response;
       }
 
       case 'delete_order':
@@ -246,7 +248,9 @@ function doPost(e) {
 
       case 'save_order': {
         const prepared = prepareOrderForSave_(data.order);
-        return saveToSheet('Orders', prepared, 'order_id');
+        const response = saveToSheet('Orders', prepared, 'order_id');
+        triggerVtpAutoTracking_(prepared);
+        return response;
       }
 
       case 'delete_order':
@@ -385,6 +389,35 @@ function saveToSheet(sheetName, data, idField) {
   }
 
   return jsonResponse({ ok: true, data });
+}
+
+function triggerVtpAutoTracking_(order) {
+  if (!order) return;
+
+  const shippingStatus = String(order.shipping_status || '').trim();
+  if (shippingStatus !== 'VIETTEL_POST') return;
+
+  const vtpOrderCode = String(order.vtp_order_code || '').trim();
+  if (!vtpOrderCode) return;
+
+  const proxyUrl = PropertiesService.getScriptProperties().getProperty('VTP_PROXY_URL');
+  if (!proxyUrl) {
+    Logger.log('VTP auto-tracking skipped: missing VTP_PROXY_URL in Script Properties.');
+    return;
+  }
+
+  try {
+    const res = UrlFetchApp.fetch(`${proxyUrl}?action=track`, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({ orderCode: vtpOrderCode, message: 'sync' }),
+      muteHttpExceptions: true,
+    });
+
+    Logger.log('VTP auto-tracking triggered for %s: %s', vtpOrderCode, res.getContentText());
+  } catch (err) {
+    Logger.log('VTP auto-tracking error for %s: %s', vtpOrderCode, String(err));
+  }
 }
 
 function deleteFromSheet(sheetName, id, idField) {
