@@ -112,6 +112,7 @@ const IconEye = ({ className = "w-5 h-5" }) => <svg className={className} fill="
 const IconTrash = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>;
 const IconHeart = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>;
 const IconFilter = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg>;
+const IconSort = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h11.25m-11.25 4.5h7.5m-7.5 4.5h3.75M4.5 6.75l-2.25 2.25m2.25-2.25L6.75 9m-2.25-2.25v10.5m0 0L2.25 15m2.25 2.25L6.75 15" /></svg>;
 const IconTruck = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" /></svg>;
 const IconChevronDown = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>;
 const IconQrCode = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" /></svg>;
@@ -136,6 +137,26 @@ const SHIPPING_OPTIONS = [
   { value: "DANG_GIAO", label: "Đang giao" },
   { value: "VIETTEL_POST", label: "Viettel Post" },
   { value: "DA_GIAO", label: "Đã giao" },
+];
+
+const TRACKING_OPTIONS = [
+  { value: "", label: "Tất cả" },
+  { value: "has", label: "Có mã" },
+  { value: "none", label: "Chưa có" },
+];
+
+const SHIPPING_FEE_OPTIONS = [
+  { value: "", label: "Tất cả" },
+  { value: "has", label: "Có phí" },
+  { value: "none", label: "Không phí" },
+];
+
+const ORDER_SORT_OPTIONS = [
+  { value: "newest", label: "Mới nhất" },
+  { value: "oldest", label: "Cũ nhất" },
+  { value: "tracking", label: "Mã vận đơn" },
+  { value: "amount_desc", label: "Giá tiền ↓" },
+  { value: "amount_asc", label: "Giá tiền ↑" },
 ];
 
 // ============ COMPONENTS ============
@@ -265,6 +286,7 @@ function OrderModal({ customers, products, onSave, onClose }) {
   const [items, setItems] = useState([]);
   const [address, setAddress] = useState("");
   const [shippingFee, setShippingFee] = useState(0);
+  const [trackingCode, setTrackingCode] = useState("");
   const [orderNote, setOrderNote] = useState("");
   const [prodSearch, setProdSearch] = useState("");
 
@@ -295,6 +317,7 @@ function OrderModal({ customers, products, onSave, onClose }) {
       newCustomer: mode === "new" ? { ...newCust, customer_id: generateId("C"), created_at: new Date().toISOString().split("T")[0] } : null,
       shipping_address: address || newCust.address || customer?.address || "",
       shipping_fee: Number(shippingFee) || 0,
+      vtp_order_code: trackingCode.trim(),
       note: orderNote,
       items, total_amount: total
     });
@@ -356,6 +379,16 @@ function OrderModal({ customers, products, onSave, onClose }) {
               <div>
                 <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Phí ship</label>
                 <input type="number" min="0" value={shippingFee} onChange={e => setShippingFee(e.target.value)} placeholder="0" className="w-full px-2.5 py-1.5 rounded border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm mt-1" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Mã vận đơn (nếu có)</label>
+                <input
+                  type="text"
+                  value={trackingCode}
+                  onChange={e => setTrackingCode(e.target.value)}
+                  placeholder="Nhập mã vận đơn..."
+                  className="w-full px-2.5 py-1.5 rounded border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm mt-1"
+                />
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Ghi chú đơn hàng</label>
@@ -900,26 +933,31 @@ function OrderDetailModal({ order, customer, products, transactions, onUpdate, o
                       <option value="DA_GIAO">Đã giao</option>
                     </select>
                   </div>
+                  <div className="mt-4">
+                    <label className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 block">Mã vận đơn (nếu có)</label>
+                    <input
+                      type="text"
+                      value={vtpCode}
+                      onChange={e => setVtpCode(e.target.value)}
+                      placeholder="Nhập mã vận đơn..."
+                      className="w-full px-4 py-2.5 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm"
+                    />
+                  </div>
                   {/* Viettel Post Tracking */}
                   {shipping === "VIETTEL_POST" && (
                     <div className="mt-4 bg-orange-50 dark:bg-orange-900/30 rounded-lg p-4 border border-orange-200 dark:border-orange-800">
                       <div className="text-sm font-medium text-orange-800 dark:text-orange-400 mb-3 flex items-center gap-2">
-                        <IconTruck className="w-4 h-4" /> Mã vận đơn Viettel Post
+                        <IconTruck className="w-4 h-4" /> Tra cứu Viettel Post
                       </div>
-                      <input
-                        type="text"
-                        value={vtpCode}
-                        onChange={e => setVtpCode(e.target.value)}
-                        placeholder="Nhập mã vận đơn VTP..."
-                        className="w-full px-4 py-2.5 rounded-lg border border-orange-200 dark:border-orange-700 dark:bg-slate-700 dark:text-white focus:border-orange-400 outline-none text-sm mb-3"
-                      />
-                      {vtpCode && (
-                        <button
-                          onClick={() => setShowVTP(true)}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-orange-500 text-white font-medium hover:bg-orange-600 cursor-pointer"
-                        >
-                          <IconTruck className="w-4 h-4" /> Tra cứu vận đơn
-                        </button>
+                      <button
+                        onClick={() => setShowVTP(true)}
+                        disabled={!vtpCode}
+                        className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium cursor-pointer ${vtpCode ? "bg-orange-500 text-white hover:bg-orange-600" : "bg-orange-200 text-orange-500 cursor-not-allowed"}`}
+                      >
+                        <IconTruck className="w-4 h-4" /> Tra cứu vận đơn
+                      </button>
+                      {!vtpCode && (
+                        <p className="text-xs text-orange-700 dark:text-orange-300 mt-2">Nhập mã vận đơn để tra cứu.</p>
                       )}
                     </div>
                   )}
@@ -1263,6 +1301,9 @@ export default function App() {
   // Filters
   const [filterPayment, setFilterPayment] = useState("");
   const [filterShipping, setFilterShipping] = useState("");
+  const [filterTracking, setFilterTracking] = useState("");
+  const [filterShippingFee, setFilterShippingFee] = useState("");
+  const [orderSort, setOrderSort] = useState("newest");
 
   // SePay filters
   const [sepayDateFrom, setSepayDateFrom] = useState("");
@@ -1478,6 +1519,7 @@ export default function App() {
       customer_id: custId,
       shipping_address: data.shipping_address,
       shipping_fee: data.shipping_fee,
+      vtp_order_code: data.vtp_order_code || "",
       total_amount: data.total_amount,
       payment_override: "AUTO",
       shipping_status: "CHUA_GIAO",
@@ -1559,20 +1601,60 @@ export default function App() {
 
   // Filtered data
   const filteredOrders = useMemo(() => {
-    return orders.filter(o => {
+    const filtered = orders.filter(o => {
       if (search) {
         const c = customers.find(x => x.customer_id === o.customer_id);
         const q = normalizeSearchValue(search);
-        if (!includesSearchValue(o.order_code, q) && !includesSearchValue(c?.full_name, q) && !includesSearchValue(c?.phone_number, q)) return false;
+        if (
+          !includesSearchValue(o.order_code, q) &&
+          !includesSearchValue(o.vtp_order_code, q) &&
+          !includesSearchValue(c?.full_name, q) &&
+          !includesSearchValue(c?.phone_number, q)
+        ) {
+          return false;
+        }
       }
       if (filterPayment) {
         const p = calculatePaymentStatus(o, transactions);
         if (p.status !== filterPayment) return false;
       }
       if (filterShipping && o.shipping_status !== filterShipping) return false;
+      if (filterTracking) {
+        const hasTracking = Boolean(o.vtp_order_code && String(o.vtp_order_code).trim());
+        if (filterTracking === "has" && !hasTracking) return false;
+        if (filterTracking === "none" && hasTracking) return false;
+      }
+      if (filterShippingFee) {
+        const hasFee = Number(o.shipping_fee) > 0;
+        if (filterShippingFee === "has" && !hasFee) return false;
+        if (filterShippingFee === "none" && hasFee) return false;
+      }
       return true;
     });
-  }, [orders, customers, transactions, search, filterPayment, filterShipping]);
+    const sorted = [...filtered];
+    sorted.sort((a, b) => {
+      switch (orderSort) {
+        case "oldest":
+          return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+        case "tracking": {
+          const codeA = String(a.vtp_order_code || "").trim();
+          const codeB = String(b.vtp_order_code || "").trim();
+          if (!codeA && !codeB) return 0;
+          if (!codeA) return 1;
+          if (!codeB) return -1;
+          return codeA.localeCompare(codeB, "vi", { numeric: true });
+        }
+        case "amount_asc":
+          return (Number(a.total_amount) || 0) - (Number(b.total_amount) || 0);
+        case "amount_desc":
+          return (Number(b.total_amount) || 0) - (Number(a.total_amount) || 0);
+        case "newest":
+        default:
+          return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+      }
+    });
+    return sorted;
+  }, [orders, customers, transactions, search, filterPayment, filterShipping, filterTracking, filterShippingFee, orderSort]);
 
   const filteredCustomers = customers.filter(c => !search || includesSearchValue(c.full_name, normalizeSearchValue(search)) || includesSearchValue(c.phone_number, normalizeSearchValue(search)));
   const filteredProducts = products.filter(p => !search || includesSearchValue(p.product_name, normalizeSearchValue(search)));
@@ -1632,7 +1714,7 @@ export default function App() {
     { id: "sepay", label: "SePay", icon: IconBanknotes, count: transactions.length },
   ];
 
-  const hasFilters = filterPayment || filterShipping;
+  const hasFilters = filterPayment || filterShipping || filterTracking || filterShippingFee;
   const hasSepayFilters = sepayDateFrom || sepayDateTo || sepayAmountMin || sepayAmountMax || sepaySearch;
 
   if (loading) {
@@ -1770,11 +1852,17 @@ export default function App() {
             </div>
             <FilterDropdown label="Thanh toán" icon={IconBanknotes} value={filterPayment} options={PAYMENT_OPTIONS} onChange={setFilterPayment} />
             <FilterDropdown label="Giao hàng" icon={IconTruck} value={filterShipping} options={SHIPPING_OPTIONS} onChange={setFilterShipping} />
+            <FilterDropdown label="Vận đơn" icon={IconTruck} value={filterTracking} options={TRACKING_OPTIONS} onChange={setFilterTracking} />
+            <FilterDropdown label="Phí ship" icon={IconBanknotes} value={filterShippingFee} options={SHIPPING_FEE_OPTIONS} onChange={setFilterShippingFee} />
             {hasFilters && (
-              <button onClick={() => { setFilterPayment(""); setFilterShipping(""); }} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 cursor-pointer">
+              <button onClick={() => { setFilterPayment(""); setFilterShipping(""); setFilterTracking(""); setFilterShippingFee(""); }} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 cursor-pointer">
                 <IconX className="w-3.5 h-3.5" /> Xóa lọc
               </button>
             )}
+            <div className="flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+              <IconSort className="w-4 h-4" /> Sắp xếp:
+            </div>
+            <FilterDropdown label="Đơn hàng" icon={IconSort} value={orderSort} options={ORDER_SORT_OPTIONS} onChange={setOrderSort} />
             <div className="text-xs text-slate-500 ml-auto">{filteredOrders.length} / {orders.length} đơn</div>
           </div>
         )}
@@ -1787,8 +1875,10 @@ export default function App() {
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-700/50 border-b dark:border-slate-700">
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Mã đơn</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Vận đơn</th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Khách hàng</th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Tổng tiền</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Phí ship</th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Tip</th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Thanh toán</th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Giao hàng</th>
@@ -1804,10 +1894,20 @@ export default function App() {
                       <tr key={order.order_id} className="hover:bg-slate-50/50 dark:hover:bg-slate-700/50">
                         <td className="px-4 py-2.5"><span className="font-semibold text-blue-600 dark:text-blue-400 text-sm">{order.order_code}</span></td>
                         <td className="px-4 py-2.5">
+                          {order.vtp_order_code ? (
+                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{order.vtp_order_code}</span>
+                          ) : (
+                            <span className="text-xs text-slate-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5">
                           <div className="font-medium text-sm dark:text-white">{cust?.full_name || "N/A"}</div>
                           <div className="text-xs text-slate-500 dark:text-slate-400">{cust?.phone_number}</div>
                         </td>
                         <td className="px-4 py-2.5 font-semibold text-sm dark:text-white">{formatCurrency(order.total_amount)}</td>
+                        <td className="px-4 py-2.5 text-sm dark:text-white">
+                          {Number(order.shipping_fee) > 0 ? formatCurrency(order.shipping_fee) : <span className="text-xs text-slate-400">-</span>}
+                        </td>
                         <td className="px-4 py-2.5">
                           {pay.tip > 0 ? (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-pink-50 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400">
