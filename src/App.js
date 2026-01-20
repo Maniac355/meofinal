@@ -202,7 +202,7 @@ function CustomerModal({ customer, onSave, onClose }) {
   const [form, setForm] = useState(customer || { full_name: "", phone_number: "", address: "", notes: "" });
   const handleSubmit = e => {
     e.preventDefault();
-    onSave({ ...form, customer_id: customer?.customer_id || generateId("C"), created_at: customer?.created_at || new Date().toISOString().split("T")[0] });
+    onSave({ ...form, customer_id: customer?.customer_id, created_at: customer?.created_at });
   };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
@@ -292,7 +292,7 @@ function OrderModal({ customers, products, onSave, onClose }) {
     if (!isValid) return;
     onSave({
       customer_id: mode === "existing" ? customer.customer_id : null,
-      newCustomer: mode === "new" ? { ...newCust, customer_id: generateId("C"), created_at: new Date().toISOString().split("T")[0] } : null,
+      newCustomer: mode === "new" ? { ...newCust } : null,
       shipping_address: address || newCust.address || customer?.address || "",
       shipping_fee: Number(shippingFee) || 0,
       note: orderNote,
