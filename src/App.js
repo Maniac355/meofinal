@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import PaymentBadge from "./components/PaymentBadge";
-import ShippingBadge from "./components/ShippingBadge";
+import AdminLogin from "./components/AdminLogin";
+import AdminDashboard from "./pages/AdminDashboard";
+import CustomerOrder from "./pages/CustomerOrder";
 import { getAPI, postAPI } from "./api/api";
-import formatCurrency from "./utils/formatCurrency";
 import calculatePaymentStatus from "./utils/paymentStatus";
-
-// ============ API URLS ============
-const DB_API_URL = "https://script.google.com/macros/s/AKfycby_YKTsZhgyGmHtGHZwAqOXkC4PplwoYN6y01LlIY7PSTyFDxcs_xDiWSEvaDSE9FCZ/exec";
-const SEPAY_API_URL = "https://script.google.com/macros/s/AKfycbyzXm0kdoTcxI8gfCtszSEwiJ6mRSizMZ42CUvnFcGJTmZbzcXM25XovWgLpnok7qsx/exec";
-const VTP_API_URL = "https://script.google.com/macros/s/AKfycbxuIMd2HH4zCW0KzSHPSCzk68oT6l6zOzItjLiwBdBpzn2TrzswDGnLWgwDcuhk1U4W/exec";
+import {
+  DB_API_URL,
+  SEPAY_API_URL
+} from "./constants";
+import { IconRefresh } from "./components/Icons";
+import { generateId } from "./utils/ids";
+import { includesSearchValue, normalizeSearchValue } from "./utils/search";
 
 // ============ UTILITIES ============
 function generateOrderCode(orders) {
@@ -28,1224 +30,14 @@ function generateOrderCode(orders) {
   return code;
 }
 
-function txKey(tx) {
-  if (!tx || typeof tx !== "object") return "";
-
-  // Prefer explicit identifiers when available.
-  const id = String(tx.transaction_id || tx.id || "").trim();
-  if (id) return `id:${id}`;
-
-  const referenceCode = String(tx.reference_code || tx.ref || "").trim();
-  const accountNumber = String(tx.account_number || tx.account || "").trim();
-  const bank = String(tx.bank || "").trim();
-  const time = String(tx.transaction_time || tx.time || "").trim();
-  const amount = String(tx.amount ?? "").trim();
-  const content = String(tx.content || "").trim();
-
-  // Fallback key based on stable-ish fields.
-  return [referenceCode, bank, accountNumber, time, amount, content]
-    .filter(Boolean)
-    .join("|");
-}
-
-// Session-scoped guard to reduce ID collisions within a single client run.
-const generatedIds = new Set();
-
-function generateId(prefix) {
-  let id = "";
-  do {
-    const timePart = Date.now().toString(36);
-    const randomPart = Math.random().toString(36).slice(2, 6);
-    id = `${prefix}${timePart}${randomPart}`;
-  } while (generatedIds.has(id));
-  generatedIds.add(id);
-  return id;
-}
-
-function normalizeOrderItemsForEdit(items = []) {
-  if (!Array.isArray(items)) return [];
-  return items.map(item => {
-    if (item?.product_id) {
-      const quantity = Number(item.quantity || 0);
-      const unitPrice = Number(item.unit_price || 0);
-      return {
-        ...item,
-        product_id: String(item.product_id),
-        quantity,
-        unit_price: unitPrice,
-        subtotal: unitPrice * quantity
-      };
-    }
-    if (item?.id) {
-      const quantity = Number(item.q || 0);
-      const unitPrice = Number(item.p || 0);
-      return {
-        product_id: String(item.id),
-        quantity,
-        unit_price: unitPrice,
-        subtotal: unitPrice * quantity
-      };
-    }
-    return null;
-  }).filter(Boolean);
-}
-
-function normalizeSearchValue(value) {
-  return String(value ?? "").toLowerCase();
-}
-
-function includesSearchValue(value, query) {
-  return normalizeSearchValue(value).includes(query);
-}
-
-// ============ ICONS ============
-const IconUsers = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>;
-const IconPackage = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>;
-const IconClipboard = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" /></svg>;
-const IconBanknotes = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg>;
-const IconPlus = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
-const IconX = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>;
-const IconCheck = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>;
-const IconSearch = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>;
-const IconPencil = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>;
-const IconEye = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
-const IconTrash = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>;
-const IconHeart = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>;
-const IconFilter = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg>;
-const IconTruck = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" /></svg>;
-const IconChevronDown = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>;
-const IconQrCode = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" /></svg>;
-const IconMapPin = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>;
-const IconPhone = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" /></svg>;
-const IconRefresh = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>;
-const IconSun = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>;
-const IconMoon = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg>;
-
-// ============ STATUS OPTIONS ============
-const PAYMENT_OPTIONS = [
-  { value: "", label: "Tất cả" },
-  { value: "CHUA_CHUYEN", label: "Chưa chuyển" },
-  { value: "THIEU", label: "Thiếu" },
-  { value: "DU", label: "Đã đủ" },
-  { value: "THUA", label: "Có tip" },
-];
-
-const SHIPPING_OPTIONS = [
-  { value: "", label: "Tất cả" },
-  { value: "CHUA_GIAO", label: "Chưa giao" },
-  { value: "DANG_GIAO", label: "Đang giao" },
-  { value: "VIETTEL_POST", label: "Viettel Post" },
-  { value: "DA_GIAO", label: "Đã giao" },
-];
-
-// ============ COMPONENTS ============
-function FilterDropdown({ label, icon: Icon, value, options, onChange }) {
-  const [open, setOpen] = useState(false);
-  const selected = options.find(o => o.value === value) || options[0];
-  return (
-    <div className="relative">
-      <button onClick={() => setOpen(!open)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium cursor-pointer ${value ? "border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400" : "border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600"}`}>
-        <Icon className="w-4 h-4" /><span className="hidden sm:inline">{label}:</span><span>{selected.label}</span>
-        <IconChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && <>
-        <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-        <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 shadow-lg py-1 min-w-[140px]">
-          {options.map(opt => (
-            <button key={opt.value} onClick={() => { onChange(opt.value); setOpen(false); }} className={`w-full px-3 py-1.5 text-left text-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 ${opt.value === value ? "bg-blue-50 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 font-medium" : "text-slate-700 dark:text-slate-300"}`}>{opt.label}</button>
-          ))}
-        </div>
-      </>}
-    </div>
-  );
-}
-
-function ConfirmModal({ title, message, onConfirm, onClose }) {
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-sm w-full p-5" onClick={e => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold mb-2 dark:text-white">{title}</h3>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">{message}</p>
-        <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-lg border dark:border-slate-600 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer">Hủy</button>
-          <button onClick={() => { onConfirm(); onClose(); }} className="flex-1 px-4 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 cursor-pointer">Xóa</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function QRModal({ order, onClose }) {
-  // QR không có số tiền cố định, chỉ có nội dung chuyển khoản
-  const qrUrl = `https://img.vietqr.io/image/TPB-07566782401-compact.png?addInfo=${encodeURIComponent(order.order_code)}&accountName=NGO%20HOANG%20TUAN%20ANH`;
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-xs w-full p-5" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-3">
-          <h3 className="font-semibold dark:text-white">QR Chuyển Khoản</h3>
-          <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer"><IconX className="w-4 h-4 dark:text-slate-400" /></button>
-        </div>
-        <img src={qrUrl} alt="QR Code" className="w-full rounded-lg mb-3" />
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Nội dung CK</span><span className="font-semibold text-blue-600 dark:text-blue-400">{order.order_code}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Số tiền (tham khảo)</span><span className="font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(order.total_amount)}</span></div>
-          <div className="bg-amber-50 dark:bg-amber-900/30 rounded-lg p-2 mt-2 border border-amber-200 dark:border-amber-800">
-            <p className="text-xs text-amber-700 dark:text-amber-400 text-center">Khách tự nhập số tiền khi chuyển khoản</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CustomerModal({ customer, onSave, onClose }) {
-  const [form, setForm] = useState(customer || { full_name: "", phone_number: "", address: "", notes: "" });
-  const handleSubmit = e => {
-    e.preventDefault();
-    onSave({ ...form, customer_id: customer?.customer_id || generateId("C"), created_at: customer?.created_at || new Date().toISOString().split("T")[0] });
-  };
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full p-5" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-semibold dark:text-white">{customer ? "Sửa" : "Thêm"} Khách Hàng</h3>
-          <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer"><IconX className="w-4 h-4 dark:text-slate-400" /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <input type="text" required placeholder="Họ tên *" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} className="w-full px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:border-blue-500 outline-none" />
-          <input type="tel" required placeholder="Số điện thoại *" value={form.phone_number} onChange={e => setForm({ ...form, phone_number: e.target.value })} className="w-full px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:border-blue-500 outline-none" />
-          <input type="text" placeholder="Địa chỉ" value={form.address || ""} onChange={e => setForm({ ...form, address: e.target.value })} className="w-full px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:border-blue-500 outline-none" />
-          <input type="text" placeholder="Ghi chú" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="w-full px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:border-blue-500 outline-none" />
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 rounded-lg border dark:border-slate-600 font-medium dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer">Hủy</button>
-            <button type="submit" className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 cursor-pointer">Lưu</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function ProductModal({ product, onSave, onClose }) {
-  const [form, setForm] = useState(product || { product_name: "", price: "", image_url: "", is_active: true });
-  const handleSubmit = e => {
-    e.preventDefault();
-    onSave({ ...form, price: Number(form.price), product_id: product?.product_id || generateId("P"), created_at: product?.created_at || new Date().toISOString().split("T")[0] });
-  };
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full p-5" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-semibold dark:text-white">{product ? "Sửa" : "Thêm"} Sản Phẩm</h3>
-          <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer"><IconX className="w-4 h-4 dark:text-slate-400" /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <input type="text" required placeholder="Tên sản phẩm *" value={form.product_name} onChange={e => setForm({ ...form, product_name: e.target.value })} className="w-full px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:border-blue-500 outline-none" />
-          <input type="number" required min="0" placeholder="Giá *" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="w-full px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:border-blue-500 outline-none" />
-          <input type="url" placeholder="URL ảnh" value={form.image_url || ""} onChange={e => setForm({ ...form, image_url: e.target.value })} className="w-full px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:border-blue-500 outline-none" />
-          <label className="flex items-center gap-2 cursor-pointer dark:text-slate-300">
-            <input type="checkbox" checked={form.is_active === true || form.is_active === "TRUE"} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="w-4 h-4" />
-            <span>Đang kinh doanh</span>
-          </label>
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 rounded-lg border dark:border-slate-600 font-medium dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer">Hủy</button>
-            <button type="submit" className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 cursor-pointer">Lưu</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function OrderModal({ customers, products, onSave, onClose }) {
-  const [mode, setMode] = useState("new");
-  const [customer, setCustomer] = useState(null);
-  const [search, setSearch] = useState("");
-  const [newCust, setNewCust] = useState({ full_name: "", phone_number: "", address: "" });
-  const [items, setItems] = useState([]);
-  const [address, setAddress] = useState("");
-  const [shippingFee, setShippingFee] = useState(0);
-  const [orderNote, setOrderNote] = useState("");
-  const [prodSearch, setProdSearch] = useState("");
-
-  const activeProducts = products.filter(p => p.is_active === true || p.is_active === "TRUE");
-  const productQuery = normalizeSearchValue(prodSearch);
-  const customerQuery = normalizeSearchValue(search);
-  const filteredProducts = activeProducts.filter(p => includesSearchValue(p.product_name, productQuery));
-  const filteredCustomers = customers.filter(c => includesSearchValue(c.full_name, customerQuery) || includesSearchValue(c.phone_number, customerQuery));
-  const total = items.reduce((s, i) => s + i.subtotal, 0);
-
-  const toggleProduct = (p) => {
-    const idx = items.findIndex(i => i.product_id === p.product_id);
-    if (idx >= 0) setItems(items.filter((_, i) => i !== idx));
-    else setItems([...items, { product_id: p.product_id, product_name: p.product_name, quantity: 1, unit_price: Number(p.price), subtotal: Number(p.price) }]);
-  };
-
-  const updateQty = (pid, qty) => {
-    const q = Math.max(1, parseInt(qty) || 1);
-    setItems(items.map(i => i.product_id === pid ? { ...i, quantity: q, subtotal: i.unit_price * q } : i));
-  };
-
-  const isValid = items.length > 0 && (mode === "existing" ? customer : newCust.full_name && newCust.phone_number);
-
-  const handleSubmit = () => {
-    if (!isValid) return;
-    onSave({
-      customer_id: mode === "existing" ? customer.customer_id : null,
-      newCustomer: mode === "new" ? { ...newCust, customer_id: generateId("C"), created_at: new Date().toISOString().split("T")[0] } : null,
-      shipping_address: address || newCust.address || customer?.address || "",
-      shipping_fee: Number(shippingFee) || 0,
-      note: orderNote,
-      items, total_amount: total
-    });
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center px-5 py-3 border-b dark:border-slate-700">
-          <h3 className="font-semibold dark:text-white">Tạo Đơn Hàng</h3>
-          <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer"><IconX className="w-4 h-4 dark:text-slate-400" /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          <div className="grid grid-cols-2 gap-5">
-            {/* Customer */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Khách hàng</span>
-                <div className="flex bg-slate-100 dark:bg-slate-700 rounded p-0.5">
-                  <button type="button" onClick={() => setMode("new")} className={`px-2 py-1 text-xs rounded cursor-pointer dark:text-slate-300 ${mode === "new" ? "bg-white dark:bg-slate-600 shadow" : ""}`}>Mới</button>
-                  <button type="button" onClick={() => setMode("existing")} className={`px-2 py-1 text-xs rounded cursor-pointer dark:text-slate-300 ${mode === "existing" ? "bg-white dark:bg-slate-600 shadow" : ""}`}>Có sẵn</button>
-                </div>
-              </div>
-              {mode === "new" ? (
-                <div className="space-y-2 bg-slate-50 dark:bg-slate-700 rounded-lg p-3">
-                  <input placeholder="Họ tên *" value={newCust.full_name} onChange={e => setNewCust({ ...newCust, full_name: e.target.value })} className="w-full px-2.5 py-1.5 rounded border dark:border-slate-600 dark:bg-slate-600 dark:text-white text-sm" />
-                  <input placeholder="SĐT *" value={newCust.phone_number} onChange={e => setNewCust({ ...newCust, phone_number: e.target.value })} className="w-full px-2.5 py-1.5 rounded border dark:border-slate-600 dark:bg-slate-600 dark:text-white text-sm" />
-                  <input placeholder="Địa chỉ" value={newCust.address} onChange={e => { setNewCust({ ...newCust, address: e.target.value }); setAddress(e.target.value); }} className="w-full px-2.5 py-1.5 rounded border dark:border-slate-600 dark:bg-slate-600 dark:text-white text-sm" />
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="relative">
-                    <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input placeholder="Tìm khách..." value={customer ? customer.full_name : search} onChange={e => { setSearch(e.target.value); setCustomer(null); }} className="w-full pl-8 pr-3 py-1.5 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm" />
-                  </div>
-                  {!customer && search && (
-                    <div className="bg-white dark:bg-slate-700 border dark:border-slate-600 rounded-lg max-h-32 overflow-y-auto">
-                      {filteredCustomers.map(c => (
-                        <button key={c.customer_id} type="button" onClick={() => { setCustomer(c); setSearch(""); setAddress(c.address || ""); }} className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-600 cursor-pointer">
-                          <div className="font-medium text-sm dark:text-white">{c.full_name}</div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400">{c.phone_number}</div>
-                        </button>
-                      ))}
-                      {filteredCustomers.length === 0 && <div className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">Không tìm thấy</div>}
-                    </div>
-                  )}
-                  {customer && (
-                    <div className="bg-blue-50 dark:bg-blue-900/50 rounded-lg p-2.5 border border-blue-200 dark:border-blue-800 flex justify-between items-start">
-                      <div><div className="font-medium text-blue-900 dark:text-blue-300 text-sm">{customer.full_name}</div><div className="text-xs text-blue-700 dark:text-blue-400">{customer.phone_number}</div></div>
-                      <button type="button" onClick={() => setCustomer(null)} className="text-blue-600 dark:text-blue-400 cursor-pointer"><IconX className="w-3.5 h-3.5" /></button>
-                    </div>
-                  )}
-                </div>
-              )}
-              <div>
-                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Địa chỉ giao</label>
-                <input value={address} onChange={e => setAddress(e.target.value)} placeholder="Địa chỉ giao hàng" className="w-full px-2.5 py-1.5 rounded border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm mt-1" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Phí ship</label>
-                <input type="number" min="0" value={shippingFee} onChange={e => setShippingFee(e.target.value)} placeholder="0" className="w-full px-2.5 py-1.5 rounded border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm mt-1" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Ghi chú đơn hàng</label>
-                <textarea rows={3} value={orderNote} onChange={e => setOrderNote(e.target.value)} placeholder="Nhập ghi chú..." className="w-full px-2.5 py-1.5 rounded border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm mt-1" />
-              </div>
-            </div>
-            {/* Products */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Sản phẩm</span>
-                {items.length > 0 && <span className="text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded-full">{items.length}</span>}
-              </div>
-              <div className="relative">
-                <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input placeholder="Tìm sản phẩm..." value={prodSearch} onChange={e => setProdSearch(e.target.value)} className="w-full pl-8 pr-3 py-1.5 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm" />
-              </div>
-              <div className="border dark:border-slate-600 rounded-lg max-h-48 overflow-y-auto">
-                {filteredProducts.map(p => {
-                  const sel = items.find(i => i.product_id === p.product_id);
-                  return (
-                    <div key={p.product_id} onClick={() => toggleProduct(p)} className={`flex items-center gap-2 p-2 border-b dark:border-slate-600 last:border-b-0 cursor-pointer ${sel ? "bg-blue-50 dark:bg-blue-900/30" : "hover:bg-slate-50 dark:hover:bg-slate-700"}`}>
-                      <div className={`w-4 h-4 rounded border flex items-center justify-center ${sel ? "bg-blue-500 border-blue-500" : "border-slate-300 dark:border-slate-500"}`}>
-                        {sel && <IconCheck className="w-2.5 h-2.5 text-white" />}
-                      </div>
-                      {p.image_url && <img src={p.image_url} alt="" className="w-8 h-8 rounded object-cover" />}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium truncate dark:text-white">{p.product_name}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400">{formatCurrency(p.price)}</div>
-                      </div>
-                      {sel && (
-                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                          <button type="button" onClick={() => updateQty(p.product_id, sel.quantity - 1)} className="w-5 h-5 rounded border dark:border-slate-500 dark:text-slate-300 flex items-center justify-center text-xs cursor-pointer">-</button>
-                          <input type="number" min="1" value={sel.quantity} onChange={e => updateQty(p.product_id, e.target.value)} className="w-8 h-5 text-center rounded border dark:border-slate-500 dark:bg-slate-600 dark:text-white text-xs" />
-                          <button type="button" onClick={() => updateQty(p.product_id, sel.quantity + 1)} className="w-5 h-5 rounded border dark:border-slate-500 dark:text-slate-300 flex items-center justify-center text-xs cursor-pointer">+</button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                {filteredProducts.length === 0 && <div className="p-3 text-center text-xs text-slate-500 dark:text-slate-400">Không có sản phẩm</div>}
-              </div>
-              {items.length > 0 && (
-                <div className="bg-slate-50 dark:bg-slate-700 rounded-lg p-2.5">
-                  {items.map(i => (
-                    <div key={i.product_id} className="flex justify-between text-xs dark:text-slate-300">
-                      <span>{i.product_name} x{i.quantity}</span>
-                      <span className="font-medium">{formatCurrency(i.subtotal)}</span>
-                    </div>
-                  ))}
-                  <div className="border-t dark:border-slate-600 mt-2 pt-2 flex justify-between text-sm font-semibold dark:text-white">
-                    <span>Tổng</span>
-                    <span className="text-blue-600 dark:text-blue-400">{formatCurrency(total)}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="px-5 py-3 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex gap-3">
-          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 rounded-lg border dark:border-slate-600 font-medium dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 cursor-pointer">Hủy</button>
-          <button onClick={handleSubmit} disabled={!isValid} className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50 cursor-pointer">Tạo đơn</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function VTPTrackingModal({ orderCode, onClose }) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [tracking, setTracking] = useState(null);
-
-  useEffect(() => {
-    async function track() {
-      try {
-        const res = await fetch(`${VTP_API_URL}?action=track`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderCode }),
-        });
-        const json = await res.json();
-        if (json.ok && json.data) {
-          setTracking(json.data);
-        } else {
-          setError(json.data?.message || json.message || "Không thể tra cứu");
-        }
-      } catch (e) {
-        setError("Lỗi kết nối: " + e.message);
-      }
-      setLoading(false);
-    }
-    track();
-  }, [orderCode]);
-
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center px-5 py-3 border-b bg-orange-50 dark:bg-orange-900/30 dark:border-orange-800">
-          <div className="flex items-center gap-2">
-            <IconTruck className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-            <div>
-              <h3 className="font-semibold text-orange-900 dark:text-orange-300">Tra cứu Viettel Post</h3>
-              <p className="text-xs text-orange-700 dark:text-orange-400">{orderCode}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1 hover:bg-orange-100 dark:hover:bg-orange-800/50 rounded cursor-pointer"><IconX className="w-4 h-4 text-orange-600 dark:text-orange-400" /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          {loading ? (
-            <div className="text-center py-8">
-              <IconRefresh className="w-6 h-6 text-orange-500 animate-spin mx-auto mb-2" />
-              <p className="text-sm text-slate-600 dark:text-slate-400">Đang tra cứu...</p>
-            </div>
-          ) : error ? (
-            <div className="text-center py-8">
-              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/50 flex items-center justify-center mx-auto mb-3">
-                <IconX className="w-6 h-6 text-red-500" />
-              </div>
-              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-            </div>
-          ) : tracking ? (
-            <div className="space-y-4">
-              {/* Status */}
-              <div className="bg-orange-50 dark:bg-orange-900/30 rounded-lg p-3 border border-orange-200 dark:border-orange-800">
-                <div className="text-xs text-orange-600 dark:text-orange-400 mb-1">Trạng thái</div>
-                <div className="font-semibold text-orange-900 dark:text-orange-300">{tracking.STATUS_NAME || tracking.ORDER_STATUS_NAME || "Đang xử lý"}</div>
-                {tracking.LAST_LOCATION && <div className="text-xs text-orange-700 dark:text-orange-400 mt-1">{tracking.LAST_LOCATION}</div>}
-              </div>
-              {/* Timeline */}
-              {tracking.LIST_ITEM_TRACE && tracking.LIST_ITEM_TRACE.length > 0 && (
-                <div>
-                  <div className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">LỊCH SỬ VẬN CHUYỂN</div>
-                  <div className="space-y-3">
-                    {tracking.LIST_ITEM_TRACE.map((item, idx) => (
-                      <div key={idx} className="flex gap-3">
-                        <div className="flex flex-col items-center">
-                          <div className={`w-3 h-3 rounded-full ${idx === 0 ? "bg-orange-500" : "bg-slate-300 dark:bg-slate-600"}`} />
-                          {idx < tracking.LIST_ITEM_TRACE.length - 1 && <div className="w-0.5 h-full bg-slate-200 dark:bg-slate-600 mt-1" />}
-                        </div>
-                        <div className="flex-1 pb-3">
-                          <div className="text-sm font-medium dark:text-white">{item.STATUS_NAME}</div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400">{item.TIME}</div>
-                          {item.NOTE && <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">{item.NOTE}</div>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function OrderDetailModal({ order, customer, products, transactions, onUpdate, onDelete, onMatchTransaction, onUnmatchTransaction, onClose }) {
-  const [shipping, setShipping] = useState(order.shipping_status || "CHUA_GIAO");
-  const [vtpCode, setVtpCode] = useState(order.vtp_order_code || "");
-  const [showQR, setShowQR] = useState(false);
-  const [showDelete, setShowDelete] = useState(false);
-  const [showVTP, setShowVTP] = useState(false);
-  const [paymentOverride, setPaymentOverride] = useState(order.payment_override || "AUTO");
-  const [proofUrl, setProofUrl] = useState(order.payment_proof_url || "");
-  const [notes, setNotes] = useState(order.note || "");
-  const payment = calculatePaymentStatus(order, transactions);
-  const baseItems = useMemo(() => normalizeOrderItemsForEdit(order.items), [order.items]);
-  const matchedTransactions = useMemo(
-    () => transactions.filter(tx => tx.order_code === order.order_code),
-    [transactions, order.order_code]
-  );
-
-  // Editable items state
-  const [editItems, setEditItems] = useState(() => normalizeOrderItemsForEdit(order.items));
-  const [showAddProduct, setShowAddProduct] = useState(false);
-  const [prodSearch, setProdSearch] = useState("");
-  const [showMatchTransaction, setShowMatchTransaction] = useState(false);
-
-  // Calculate new total from editItems
-  const newTotal = editItems.reduce((s, i) => s + i.subtotal, 0);
-  const hasChanges = JSON.stringify(editItems) !== JSON.stringify(baseItems) || newTotal !== order.total_amount;
-
-  // Filter products for adding (exclude already added ones)
-  const activeProducts = products.filter(p => p.is_active === true || p.is_active === "TRUE");
-  const availableProducts = activeProducts.filter(p =>
-    !editItems.find(i => i.product_id === p.product_id) &&
-    includesSearchValue(p.product_name, normalizeSearchValue(prodSearch))
-  );
-
-  // Update quantity
-  const updateQty = (productId, newQty) => {
-    const qty = Math.max(1, parseInt(newQty) || 1);
-    setEditItems(editItems.map(i =>
-      i.product_id === productId
-        ? { ...i, quantity: qty, subtotal: i.unit_price * qty }
-        : i
-    ));
-  };
-
-  // Remove item
-  const removeItem = (productId) => {
-    setEditItems(editItems.filter(i => i.product_id !== productId));
-  };
-
-  // Add product
-  const addProduct = (product) => {
-    setEditItems([...editItems, {
-      product_id: product.product_id,
-      product_name: product.product_name,
-      quantity: 1,
-      unit_price: Number(product.price),
-      subtotal: Number(product.price)
-    }]);
-    setShowAddProduct(false);
-    setProdSearch("");
-  };
-
-  const handleSave = () => {
-    onUpdate({
-      ...order,
-      shipping_status: shipping,
-      vtp_order_code: vtpCode,
-      payment_override: paymentOverride,
-      payment_proof_url: proofUrl,
-      note: notes,
-      items: editItems,
-      total_amount: newTotal
-    });
-    onClose();
-  };
-
-  return (
-    <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-          {/* Header */}
-          <div className="flex justify-between items-center px-6 py-4 border-b dark:border-slate-700 bg-gradient-to-r from-blue-50 to-slate-50 dark:from-slate-800 dark:to-slate-800 rounded-t-2xl">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
-                <IconClipboard className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">{order.order_code}</span>
-                  <PaymentBadge order={order} transactions={transactions} />
-                  <ShippingBadge status={order.shipping_status} />
-                </div>
-                <div className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Ngày tạo: {order.created_at}</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setShowQR(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white dark:bg-slate-700 border dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 cursor-pointer shadow-sm">
-                <IconQrCode className="w-4 h-4" /> QR
-              </button>
-              <button onClick={() => setShowDelete(true)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-500 rounded-lg cursor-pointer"><IconTrash className="w-5 h-5" /></button>
-              <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg cursor-pointer"><IconX className="w-5 h-5 dark:text-slate-400" /></button>
-            </div>
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="grid grid-cols-2 gap-6">
-              {/* Left Column - Customer & Products */}
-              <div className="space-y-5">
-                {/* Customer Info */}
-                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-5">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white font-bold text-lg">
-                      {(customer?.full_name || "?").charAt(0)}
-                    </div>
-                    <div>
-                      <div className="text-lg font-semibold dark:text-white">{customer?.full_name || "N/A"}</div>
-                      <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
-                        <IconPhone className="w-4 h-4" /> {customer?.phone_number || "N/A"}
-                      </div>
-                    </div>
-                  </div>
-                  {order.shipping_address && (
-                    <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4 border border-blue-100 dark:border-blue-800">
-                      <div className="flex items-center gap-2 text-sm font-medium text-blue-800 dark:text-blue-400 mb-2">
-                        <IconMapPin className="w-4 h-4" /> Địa chỉ giao hàng
-                      </div>
-                      <div className="text-sm text-blue-900 dark:text-blue-300">{order.shipping_address}</div>
-                    </div>
-                  )}
-                  {/* Order Notes */}
-                  <div className="mt-4">
-                    <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                      <IconClipboard className="w-4 h-4" /> Ghi chú đơn hàng
-                    </label>
-                    <textarea
-                      value={notes}
-                      onChange={e => setNotes(e.target.value)}
-                      placeholder="Nhập ghi chú cho đơn hàng..."
-                      rows={3}
-                      className="w-full px-4 py-3 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm resize-none focus:border-blue-500 outline-none"
-                    />
-                  </div>
-                  {/* Matched Transactions */}
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                        <IconBanknotes className="w-4 h-4" /> Giao dịch đã khớp
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setShowMatchTransaction(true)}
-                        className="px-2.5 py-1 text-xs rounded-lg bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900 cursor-pointer"
-                      >
-                        Chọn giao dịch
-                      </button>
-                    </div>
-                    {matchedTransactions.length > 0 ? (
-                      <div className="space-y-2">
-                        {matchedTransactions.map(tx => (
-                          <div key={tx.transaction_id || tx.reference_code} className="flex items-center justify-between gap-3 bg-white dark:bg-slate-700 rounded-lg border dark:border-slate-600 px-3 py-2">
-                            <div className="min-w-0">
-                              <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">+{formatCurrency(tx.amount)}</div>
-                              <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{tx.bank} • {tx.transaction_time}</div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => onUnmatchTransaction(tx)}
-                              className="px-2 py-1 text-xs rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 cursor-pointer"
-                            >
-                              Xóa khớp
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-sm text-slate-500 dark:text-slate-400">Chưa khớp giao dịch.</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Products List */}
-                <div className="bg-white dark:bg-slate-700/50 rounded-xl border dark:border-slate-600 overflow-hidden">
-                  <div className="px-5 py-3 bg-slate-50 dark:bg-slate-700 border-b dark:border-slate-600">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold dark:text-white">Sản phẩm ({editItems.length})</span>
-                      <button
-                        onClick={() => setShowAddProduct(true)}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900 cursor-pointer"
-                      >
-                        <IconPlus className="w-3.5 h-3.5" /> Thêm SP
-                      </button>
-                    </div>
-                  </div>
-                  <div className="divide-y dark:divide-slate-600 max-h-64 overflow-y-auto">
-                    {editItems.map((item, idx) => {
-                      const prod = products.find(p => p.product_id === item.product_id);
-                      return (
-                        <div key={idx} className="flex items-center gap-3 p-4 hover:bg-slate-50 dark:hover:bg-slate-600/50">
-                          <div className="w-14 h-14 rounded-lg bg-slate-100 dark:bg-slate-600 flex items-center justify-center overflow-hidden flex-shrink-0">
-                            {prod?.image_url ? (
-                              <img src={prod.image_url} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              <IconPackage className="w-7 h-7 text-slate-400" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium dark:text-white text-sm">{prod?.product_name || item.product_name}</div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400">{formatCurrency(item.unit_price)}</div>
-                          </div>
-                          {/* Quantity Controls */}
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => updateQty(item.product_id, item.quantity - 1)}
-                              className="w-7 h-7 rounded-lg border dark:border-slate-500 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer"
-                            >
-                              −
-                            </button>
-                            <input
-                              type="number"
-                              min="1"
-                              value={item.quantity}
-                              onChange={e => updateQty(item.product_id, e.target.value)}
-                              className="w-10 h-7 text-center rounded-lg border dark:border-slate-500 dark:bg-slate-600 dark:text-white text-sm"
-                            />
-                            <button
-                              onClick={() => updateQty(item.product_id, item.quantity + 1)}
-                              className="w-7 h-7 rounded-lg border dark:border-slate-500 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer"
-                            >
-                              +
-                            </button>
-                          </div>
-                          <div className="text-right w-24 flex-shrink-0">
-                            <div className="font-semibold text-blue-600 dark:text-blue-400 text-sm">{formatCurrency(item.subtotal)}</div>
-                          </div>
-                          {/* Remove button */}
-                          <button
-                            onClick={() => removeItem(item.product_id)}
-                            className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg cursor-pointer flex-shrink-0"
-                          >
-                            <IconTrash className="w-4 h-4" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                    {editItems.length === 0 && (
-                      <div className="p-8 text-center text-slate-500 dark:text-slate-400">
-                        <IconPackage className="w-10 h-10 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">Chưa có sản phẩm</p>
-                      </div>
-                    )}
-                  </div>
-                  {/* Total */}
-                  <div className="px-5 py-4 bg-gradient-to-r from-blue-50 to-emerald-50 dark:from-slate-700 dark:to-slate-700 border-t dark:border-slate-600">
-                    <div className="flex justify-between items-center">
-                      <span className="text-lg font-semibold dark:text-white">Tổng cộng</span>
-                      <div className="text-right">
-                        <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">{formatCurrency(newTotal)}</span>
-                        {hasChanges && newTotal !== order.total_amount && (
-                          <div className="text-xs text-slate-500 dark:text-slate-400 line-through">{formatCurrency(order.total_amount)}</div>
-                        )}
-                      </div>
-                    </div>
-                    {payment.tip > 0 && (
-                      <div className="flex justify-between items-center mt-2 pt-2 border-t border-pink-200 dark:border-pink-800">
-                        <span className="text-sm text-pink-700 dark:text-pink-400 flex items-center gap-1"><IconHeart className="w-4 h-4" /> Tip khách tặng</span>
-                        <span className="font-bold text-pink-600 dark:text-pink-400">+{formatCurrency(payment.tip)}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Add Product Modal */}
-                {showAddProduct && (
-                  <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={() => setShowAddProduct(false)}>
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full max-h-[60vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                      <div className="flex justify-between items-center px-5 py-3 border-b dark:border-slate-700">
-                        <h3 className="font-semibold dark:text-white">Thêm sản phẩm</h3>
-                        <button onClick={() => setShowAddProduct(false)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer">
-                          <IconX className="w-4 h-4 dark:text-slate-400" />
-                        </button>
-                      </div>
-                      <div className="px-5 py-3 border-b dark:border-slate-700">
-                        <div className="relative">
-                          <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                          <input
-                            type="text"
-                            value={prodSearch}
-                            onChange={e => setProdSearch(e.target.value)}
-                            placeholder="Tìm sản phẩm..."
-                            className="w-full pl-9 pr-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm"
-                            autoFocus
-                          />
-                        </div>
-                      </div>
-                      <div className="flex-1 overflow-y-auto">
-                        {availableProducts.length > 0 ? (
-                          <div className="divide-y dark:divide-slate-700">
-                            {availableProducts.map(p => (
-                              <button
-                                key={p.product_id}
-                                onClick={() => addProduct(p)}
-                                className="w-full flex items-center gap-3 p-4 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer text-left"
-                              >
-                                <div className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-600 flex items-center justify-center overflow-hidden">
-                                  {p.image_url ? (
-                                    <img src={p.image_url} alt="" className="w-full h-full object-cover" />
-                                  ) : (
-                                    <IconPackage className="w-6 h-6 text-slate-400" />
-                                  )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-medium dark:text-white text-sm">{p.product_name}</div>
-                                  <div className="text-sm text-blue-600 dark:text-blue-400 font-semibold">{formatCurrency(p.price)}</div>
-                                </div>
-                                <IconPlus className="w-5 h-5 text-blue-500" />
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="p-8 text-center text-slate-500 dark:text-slate-400">
-                            <p className="text-sm">{prodSearch ? "Không tìm thấy sản phẩm" : "Đã thêm hết sản phẩm"}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Right Column - Status & Actions */}
-              <div className="space-y-5">
-                {/* Payment Status */}
-                <div className="bg-white dark:bg-slate-700/50 rounded-xl border dark:border-slate-600 p-5">
-                  <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
-                    <IconBanknotes className="w-5 h-5" /> Thanh toán
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div className="bg-emerald-50 dark:bg-emerald-900/30 rounded-lg p-4 border border-emerald-100 dark:border-emerald-800">
-                      <div className="text-xs text-emerald-600 dark:text-emerald-400 mb-1">Đã nhận</div>
-                      <div className="text-xl font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(payment.received)}</div>
-                    </div>
-                    <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4 border border-blue-100 dark:border-blue-800">
-                      <div className="text-xs text-blue-600 dark:text-blue-400 mb-1">Cần thanh toán</div>
-                      <div className="text-xl font-bold text-blue-700 dark:text-blue-400">{formatCurrency(newTotal)}</div>
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 block">Thanh toán thủ công</label>
-                      <select value={paymentOverride} onChange={e => setPaymentOverride(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm cursor-pointer">
-                        <option value="AUTO">Tự động đối soát</option>
-                        <option value="DU">Đã chuyển</option>
-                        <option value="CHUA_CHUYEN">Chưa chuyển</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 block">Ảnh giao dịch</label>
-                      <input
-                        type="text"
-                        value={proofUrl}
-                        onChange={e => setProofUrl(e.target.value)}
-                        placeholder="Dán URL ảnh giao dịch..."
-                        className="w-full px-4 py-2.5 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm"
-                      />
-                      {proofUrl && (
-                        <a href={proofUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-2 inline-block">
-                          Xem ảnh giao dịch ↗
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Shipping Status */}
-                <div className="bg-white dark:bg-slate-700/50 rounded-xl border dark:border-slate-600 p-5">
-                  <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
-                    <IconTruck className="w-5 h-5" /> Giao hàng
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 block">Trạng thái giao hàng</label>
-                    <select value={shipping} onChange={e => setShipping(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm cursor-pointer">
-                      <option value="CHUA_GIAO">Chưa giao</option>
-                      <option value="DANG_GIAO">Đang giao</option>
-                      <option value="VIETTEL_POST">Viettel Post</option>
-                      <option value="DA_GIAO">Đã giao</option>
-                    </select>
-                  </div>
-                  {/* Viettel Post Tracking */}
-                  {shipping === "VIETTEL_POST" && (
-                    <div className="mt-4 bg-orange-50 dark:bg-orange-900/30 rounded-lg p-4 border border-orange-200 dark:border-orange-800">
-                      <div className="text-sm font-medium text-orange-800 dark:text-orange-400 mb-3 flex items-center gap-2">
-                        <IconTruck className="w-4 h-4" /> Mã vận đơn Viettel Post
-                      </div>
-                      <input
-                        type="text"
-                        value={vtpCode}
-                        onChange={e => setVtpCode(e.target.value)}
-                        placeholder="Nhập mã vận đơn VTP..."
-                        className="w-full px-4 py-2.5 rounded-lg border border-orange-200 dark:border-orange-700 dark:bg-slate-700 dark:text-white focus:border-orange-400 outline-none text-sm mb-3"
-                      />
-                      {vtpCode && (
-                        <button
-                          onClick={() => setShowVTP(true)}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-orange-500 text-white font-medium hover:bg-orange-600 cursor-pointer"
-                        >
-                          <IconTruck className="w-4 h-4" /> Tra cứu vận đơn
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="px-6 py-4 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex gap-4 rounded-b-2xl">
-            <button onClick={onClose} className="flex-1 px-6 py-3 rounded-xl border dark:border-slate-600 font-medium dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 cursor-pointer transition-all">
-              Đóng
-            </button>
-            <button onClick={handleSave} className="flex-1 px-6 py-3 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 cursor-pointer shadow-lg shadow-blue-500/25 transition-all">
-              Lưu thay đổi
-            </button>
-          </div>
-        </div>
-      </div>
-      {showQR && <QRModal order={order} onClose={() => setShowQR(false)} />}
-      {showVTP && vtpCode && <VTPTrackingModal orderCode={vtpCode} onClose={() => setShowVTP(false)} />}
-      {showDelete && <ConfirmModal title="Xóa đơn hàng?" message={`Xóa đơn ${order.order_code}?`} onConfirm={() => { onDelete(order.order_id); onClose(); }} onClose={() => setShowDelete(false)} />}
-      {showMatchTransaction && (
-        <MatchTransactionModal
-          order={order}
-          transactions={transactions}
-          onMatch={onMatchTransaction}
-          onClose={() => setShowMatchTransaction(false)}
-        />
-      )}
-    </>
-  );
-}
-
-function MatchTransactionModal({ order, transactions, onMatch, onClose }) {
-  const [search, setSearch] = useState("");
-  const availableTx = transactions.filter(tx => !tx.order_code);
-  const filteredTx = availableTx.filter(tx => {
-    const q = normalizeSearchValue(search);
-    return !q ||
-      includesSearchValue(tx.content, q) ||
-      includesSearchValue(tx.transaction_code, q) ||
-      includesSearchValue(tx.reference_code, q) ||
-      includesSearchValue(tx.amount, q);
-  });
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-lg w-full max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center px-5 py-3 border-b dark:border-slate-700">
-          <div>
-            <h3 className="font-semibold dark:text-white">Chọn giao dịch</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Đơn hàng: {order.order_code}</p>
-          </div>
-          <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer">
-            <IconX className="w-4 h-4 dark:text-slate-400" />
-          </button>
-        </div>
-        <div className="px-5 py-3 border-b dark:border-slate-700">
-          <div className="relative">
-            <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Tìm giao dịch..."
-              className="w-full pl-9 pr-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm"
-            />
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-3">
-          {filteredTx.length > 0 ? (
-            <div className="space-y-2">
-              {filteredTx.map(tx => (
-                <button
-                  key={tx.transaction_id || tx.reference_code}
-                  onClick={() => { onMatch(tx, order); onClose(); }}
-                  className="w-full p-3 bg-slate-50 dark:bg-slate-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-transparent hover:border-blue-200 dark:hover:border-blue-800 text-left cursor-pointer"
-                >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <div className="font-semibold text-emerald-600 dark:text-emerald-400">+{formatCurrency(tx.amount)}</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">{tx.bank} • {tx.transaction_time}</div>
-                      <div className="text-xs text-slate-400 truncate max-w-xs">{tx.content}</div>
-                    </div>
-                    <div className="text-right text-xs text-slate-500 dark:text-slate-400">
-                      {Number(tx.amount) === Number(order.total_amount) ? "Khớp số tiền" : `Chênh ${formatCurrency(Number(tx.amount || 0) - Number(order.total_amount || 0))}`}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-slate-500 dark:text-slate-400">
-              <p className="text-sm">Không có giao dịch phù hợp</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ManualTransactionModal({ onSave, onClose }) {
-  const [amount, setAmount] = useState("");
-  const [content, setContent] = useState("");
-  const [transactionTime, setTransactionTime] = useState(new Date().toISOString().slice(0, 16));
-  const [bank, setBank] = useState("");
-  const [note, setNote] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const isValid = amount && parseFloat(amount) > 0 && content.trim();
-
-  const handleSubmit = async () => {
-    if (!isValid || saving) return;
-    setSaving(true);
-    const transaction = {
-      transaction_id: `MANUAL_${Date.now()}`,
-      amount: parseFloat(amount),
-      content: content.trim(),
-      transaction_time: transactionTime.replace("T", " "),
-      bank: bank || "Thủ công",
-      source: "Manual",
-      note: note,
-      created_at: new Date().toISOString().split("T")[0]
-    };
-    await onSave(transaction);
-    setSaving(false);
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center px-5 py-3 border-b dark:border-slate-700">
-          <h3 className="font-semibold dark:text-white">Thêm giao dịch thủ công</h3>
-          <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer"><IconX className="w-4 h-4 dark:text-slate-400" /></button>
-        </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Số tiền *</label>
-            <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0" className="w-full px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm mt-1" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Nội dung chuyển khoản *</label>
-            <input type="text" value={content} onChange={e => setContent(e.target.value)} placeholder="Nội dung..." className="w-full px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm mt-1" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Thời gian</label>
-            <input type="datetime-local" value={transactionTime} onChange={e => setTransactionTime(e.target.value)} className="w-full px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm mt-1" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Ngân hàng</label>
-            <input type="text" value={bank} onChange={e => setBank(e.target.value)} placeholder="VD: Vietcombank" className="w-full px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm mt-1" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Ghi chú</label>
-            <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="Ghi chú..." className="w-full px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm mt-1" />
-          </div>
-        </div>
-        <div className="px-5 py-3 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex gap-3">
-          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-lg border dark:border-slate-600 font-medium dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 cursor-pointer">Hủy</button>
-          <button onClick={handleSubmit} disabled={!isValid || saving} className="flex-1 px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-50 cursor-pointer">
-            {saving ? "Đang lưu..." : "Thêm"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MatchOrderModal({ transaction, orders, onMatch, onClose }) {
-  const [search, setSearch] = useState("");
-  const unmatchedOrders = orders.filter(o => {
-    const matchSearch = !search ||
-      includesSearchValue(o.order_code, normalizeSearchValue(search)) ||
-      includesSearchValue(o.total_amount, normalizeSearchValue(search));
-    return matchSearch;
-  });
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-lg w-full max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center px-5 py-3 border-b dark:border-slate-700">
-          <div>
-            <h3 className="font-semibold dark:text-white">Khớp đơn hàng</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Giao dịch: {formatCurrency(transaction.amount)}</p>
-          </div>
-          <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer"><IconX className="w-4 h-4 dark:text-slate-400" /></button>
-        </div>
-        <div className="px-5 py-3 border-b dark:border-slate-700">
-          <div className="relative">
-            <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Tìm mã đơn hoặc số tiền..."
-              className="w-full pl-9 pr-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm"
-            />
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-3">
-          {unmatchedOrders.length > 0 ? (
-            <div className="space-y-2">
-              {unmatchedOrders.map(order => (
-                <button
-                  key={order.order_id}
-                  onClick={() => onMatch(transaction, order)}
-                  className="w-full p-3 bg-slate-50 dark:bg-slate-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-200 dark:hover:border-blue-800 border border-transparent text-left cursor-pointer"
-                >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <div className="font-semibold text-blue-600 dark:text-blue-400">{order.order_code}</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">{order.created_at}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-semibold dark:text-white">{formatCurrency(order.total_amount)}</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">
-                        {order.total_amount === transaction.amount ? (
-                          <span className="text-emerald-600 dark:text-emerald-400">Khớp số tiền</span>
-                        ) : (
-                          <span>Chênh: {formatCurrency(transaction.amount - order.total_amount)}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-slate-500 dark:text-slate-400">
-              <p className="text-sm">Không tìm thấy đơn hàng</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TransactionsModal({ transactions, orders, onSaveTransaction, onUnmatchTransaction, onClose }) {
-  const [showAdd, setShowAdd] = useState(false);
-  const [matchingTx, setMatchingTx] = useState(null);
-
-  const handleMatch = async (transaction, order) => {
-    const updated = {
-      ...transaction,
-      order_code: order.order_code,
-      matched_at: new Date().toISOString().split("T")[0]
-    };
-    await onSaveTransaction(updated);
-    setMatchingTx(null);
-  };
-
-  return (
-    <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
-          <div className="flex justify-between items-center px-5 py-3 border-b dark:border-slate-700">
-            <div>
-              <h3 className="font-semibold dark:text-white">Giao dịch SePay</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">{transactions.length} giao dịch • Cập nhật mỗi 15s</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setShowAdd(true)} className="px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 cursor-pointer flex items-center gap-1">
-                <IconPlus className="w-4 h-4" /> Thêm
-              </button>
-              <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer"><IconX className="w-4 h-4 dark:text-slate-400" /></button>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-5">
-            {transactions.length > 0 ? (
-              <div className="space-y-2">
-                {transactions.map((tx, idx) => (
-                  <div key={tx.transaction_id || idx} className={`p-3 rounded-lg ${tx.source === 'Manual' ? 'bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800' : 'bg-slate-50 dark:bg-slate-700'}`}>
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">+{formatCurrency(tx.amount)}</span>
-                          {tx.source === 'Manual' && <span className="text-xs bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded">Thủ công</span>}
-                          {tx.order_code && <span className="text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">{tx.order_code}</span>}
-                        </div>
-                        <div className="text-xs text-slate-600 dark:text-slate-400 mt-1 max-w-md truncate">{tx.content}</div>
-                        <div className="text-xs text-slate-400">{tx.bank} • {tx.transaction_time}</div>
-                      </div>
-                      {!tx.order_code ? (
-                        <button
-                          onClick={() => setMatchingTx(tx)}
-                          className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 rounded hover:bg-blue-200 dark:hover:bg-blue-900 cursor-pointer"
-                        >
-                          Khớp đơn
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => onUnmatchTransaction(tx)}
-                          className="px-2 py-1 text-xs text-red-600 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-900/30 cursor-pointer"
-                        >
-                          Xóa khớp
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-slate-500 dark:text-slate-400">
-                <IconRefresh className="w-6 h-6 mx-auto mb-2 animate-spin" />
-                <p className="text-sm">Đang tải...</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-      {showAdd && <ManualTransactionModal onSave={onSaveTransaction} onClose={() => setShowAdd(false)} />}
-      {matchingTx && <MatchOrderModal transaction={matchingTx} orders={orders} onMatch={handleMatch} onClose={() => setMatchingTx(null)} />}
-    </>
-  );
-}
-
 // ============ SYNC CONFIG ============
 const SYNC_INTERVAL = 10000; // 10 seconds
 const SEPAY_INTERVAL = 15000; // 15 seconds
 
 // ============ MAIN APP ============
 export default function App() {
+  const [route, setRoute] = useState(() => window.location.pathname || "/order");
+  const [isAdminAuthed, setIsAdminAuthed] = useState(() => localStorage.getItem("adminAuthed") === "true");
   const [tab, setTab] = useState("orders");
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -1263,6 +55,8 @@ export default function App() {
   // Filters
   const [filterPayment, setFilterPayment] = useState("");
   const [filterShipping, setFilterShipping] = useState("");
+  const [filterShippingFee, setFilterShippingFee] = useState("");
+  const [orderSort, setOrderSort] = useState("newest");
 
   // SePay filters
   const [sepayDateFrom, setSepayDateFrom] = useState("");
@@ -1298,6 +92,43 @@ export default function App() {
   const [showTx, setShowTx] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [matchingTx, setMatchingTx] = useState(null);
+
+  const navigate = useCallback((path, { replace = false } = {}) => {
+    if (replace) {
+      window.history.replaceState({}, "", path);
+    } else {
+      window.history.pushState({}, "", path);
+    }
+    setRoute(path);
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => setRoute(window.location.pathname || "/order");
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (route === "/" || !route) {
+      navigate("/order", { replace: true });
+    }
+  }, [route, navigate]);
+
+  const handleAdminLogin = useCallback(({ username, password }) => {
+    const adminUser = localStorage.getItem("adminUser") || "nhtameomeo";
+    const adminPass = localStorage.getItem("adminPass") || "M4n14c@0305";
+    const success = username === adminUser && password === adminPass;
+    if (success) {
+      localStorage.setItem("adminAuthed", "true");
+      setIsAdminAuthed(true);
+    }
+    return success;
+  }, []);
+
+  const handleAdminLogout = useCallback(() => {
+    localStorage.removeItem("adminAuthed");
+    setIsAdminAuthed(false);
+  }, []);
 
   const parseItemsJson = (itemsJson, fallbackItems = [], orderCode = "") => {
     if (!itemsJson) {
@@ -1478,6 +309,7 @@ export default function App() {
       customer_id: custId,
       shipping_address: data.shipping_address,
       shipping_fee: data.shipping_fee,
+      vtp_order_code: data.vtp_order_code || "",
       total_amount: data.total_amount,
       payment_override: "AUTO",
       shipping_status: "CHUA_GIAO",
@@ -1488,12 +320,18 @@ export default function App() {
     };
     setOrders([newOrder, ...orders]);
     await postAPI(DB_API_URL, "upsert_order", { data: newOrder });
+    return newOrder;
   }
 
   async function updateOrder(data) {
     const toSave = { ...data, items_json: JSON.stringify(data.items || []), vtp_order_code: data.vtp_order_code || "" };
     setOrders(orders.map(o => o.order_id === data.order_id ? toSave : o));
     await postAPI(DB_API_URL, "upsert_order", { data: toSave });
+  }
+
+  async function markOrderDelivered(order) {
+    const updated = { ...order, shipping_status: "DA_GIAO" };
+    await updateOrder(updated);
   }
 
   async function deleteOrder(id) {
@@ -1559,20 +397,49 @@ export default function App() {
 
   // Filtered data
   const filteredOrders = useMemo(() => {
-    return orders.filter(o => {
+    const filtered = orders.filter(o => {
       if (search) {
         const c = customers.find(x => x.customer_id === o.customer_id);
         const q = normalizeSearchValue(search);
-        if (!includesSearchValue(o.order_code, q) && !includesSearchValue(c?.full_name, q) && !includesSearchValue(c?.phone_number, q)) return false;
+        if (
+          !includesSearchValue(o.order_code, q) &&
+          !includesSearchValue(o.vtp_order_code, q) &&
+          !includesSearchValue(c?.full_name, q) &&
+          !includesSearchValue(c?.phone_number, q)
+        ) {
+          return false;
+        }
       }
       if (filterPayment) {
         const p = calculatePaymentStatus(o, transactions);
         if (p.status !== filterPayment) return false;
       }
       if (filterShipping && o.shipping_status !== filterShipping) return false;
+      if (filterShippingFee) {
+        const hasFee = Number(o.shipping_fee) > 0;
+        if (filterShippingFee === "has" && !hasFee) return false;
+        if (filterShippingFee === "none" && hasFee) return false;
+      }
       return true;
     });
-  }, [orders, customers, transactions, search, filterPayment, filterShipping]);
+    const sorted = [...filtered];
+    sorted.sort((a, b) => {
+      switch (orderSort) {
+        case "oldest":
+          return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+        case "order_code":
+          return String(a.order_code || "").localeCompare(String(b.order_code || ""), "vi", { numeric: true });
+        case "amount_asc":
+          return (Number(a.total_amount) || 0) - (Number(b.total_amount) || 0);
+        case "amount_desc":
+          return (Number(b.total_amount) || 0) - (Number(a.total_amount) || 0);
+        case "newest":
+        default:
+          return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+      }
+    });
+    return sorted;
+  }, [orders, customers, transactions, search, filterPayment, filterShipping, filterShippingFee, orderSort]);
 
   const filteredCustomers = customers.filter(c => !search || includesSearchValue(c.full_name, normalizeSearchValue(search)) || includesSearchValue(c.phone_number, normalizeSearchValue(search)));
   const filteredProducts = products.filter(p => !search || includesSearchValue(p.product_name, normalizeSearchValue(search)));
@@ -1625,14 +492,7 @@ export default function App() {
     return result;
   }, [transactions, sepaySearch, sepayDateFrom, sepayDateTo, sepayAmountMin, sepayAmountMax, sepaySortOrder]);
 
-  const tabs = [
-    { id: "orders", label: "Đơn hàng", icon: IconClipboard, count: orders.length },
-    { id: "customers", label: "Khách hàng", icon: IconUsers, count: customers.length },
-    { id: "products", label: "Sản phẩm", icon: IconPackage, count: products.length },
-    { id: "sepay", label: "SePay", icon: IconBanknotes, count: transactions.length },
-  ];
-
-  const hasFilters = filterPayment || filterShipping;
+  const hasFilters = filterPayment || filterShipping || filterShippingFee;
   const hasSepayFilters = sepayDateFrom || sepayDateTo || sepayAmountMin || sepayAmountMax || sepaySearch;
 
   if (loading) {
@@ -1646,422 +506,96 @@ export default function App() {
     );
   }
 
+  const isAdminRoute = (route || "").startsWith("/admin");
+
+  if (isAdminRoute) {
+    if (!isAdminAuthed) {
+      return <AdminLogin onLogin={handleAdminLogin} />;
+    }
+    return (
+      <AdminDashboard
+        lastSync={lastSync}
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+        handleManualSync={handleManualSync}
+        syncing={syncing}
+        tab={tab}
+        setTab={setTab}
+        search={search}
+        setSearch={setSearch}
+        newOrdersCount={newOrdersCount}
+        setNewOrdersCount={setNewOrdersCount}
+        stats={stats}
+        orders={orders}
+        customers={customers}
+        products={products}
+        transactions={transactions}
+        filteredOrders={filteredOrders}
+        filteredCustomers={filteredCustomers}
+        filteredProducts={filteredProducts}
+        filterPayment={filterPayment}
+        setFilterPayment={setFilterPayment}
+        filterShipping={filterShipping}
+        setFilterShipping={setFilterShipping}
+        filterShippingFee={filterShippingFee}
+        setFilterShippingFee={setFilterShippingFee}
+        orderSort={orderSort}
+        setOrderSort={setOrderSort}
+        hasFilters={hasFilters}
+        sepaySearch={sepaySearch}
+        setSepaySearch={setSepaySearch}
+        sepayDateFrom={sepayDateFrom}
+        setSepayDateFrom={setSepayDateFrom}
+        sepayDateTo={sepayDateTo}
+        setSepayDateTo={setSepayDateTo}
+        sepayAmountMin={sepayAmountMin}
+        setSepayAmountMin={setSepayAmountMin}
+        sepayAmountMax={sepayAmountMax}
+        setSepayAmountMax={setSepayAmountMax}
+        sepaySortOrder={sepaySortOrder}
+        setSepaySortOrder={setSepaySortOrder}
+        hasSepayFilters={hasSepayFilters}
+        filteredTransactions={filteredTransactions}
+        showCustomer={showCustomer}
+        setShowCustomer={setShowCustomer}
+        editCustomer={editCustomer}
+        setEditCustomer={setEditCustomer}
+        showProduct={showProduct}
+        setShowProduct={setShowProduct}
+        editProduct={editProduct}
+        setEditProduct={setEditProduct}
+        showOrder={showOrder}
+        setShowOrder={setShowOrder}
+        selectedOrder={selectedOrder}
+        setSelectedOrder={setSelectedOrder}
+        showTx={showTx}
+        setShowTx={setShowTx}
+        deleteConfirm={deleteConfirm}
+        setDeleteConfirm={setDeleteConfirm}
+        matchingTx={matchingTx}
+        setMatchingTx={setMatchingTx}
+        saveCustomer={saveCustomer}
+        saveProduct={saveProduct}
+        createOrder={createOrder}
+        updateOrder={updateOrder}
+        deleteOrder={deleteOrder}
+        handleMatchOrder={handleMatchOrder}
+        handleUnmatchTransaction={handleUnmatchTransaction}
+        saveTransaction={saveTransaction}
+        markOrderDelivered={markOrderDelivered}
+        deleteCustomer={deleteCustomer}
+        deleteProduct={deleteProduct}
+        onNavigateOrder={() => navigate("/order")}
+        onLogout={handleAdminLogout}
+      />
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-700/60">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-500/25">
-                <IconPackage className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-base font-bold text-slate-900 dark:text-white">Meoooo</h1>
-                {lastSync && (
-                  <div className="text-[10px] text-slate-400 dark:text-slate-500 -mt-0.5">
-                    Cập nhật: {lastSync.toLocaleTimeString("vi-VN")}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {/* Dark Mode Toggle */}
-              <button
-                onClick={() => setDarkMode(!darkMode)}
-                className="p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 cursor-pointer transition-all"
-                title={darkMode ? "Chuyển sang sáng" : "Chuyển sang tối"}
-              >
-                {darkMode ? <IconSun className="w-4 h-4" /> : <IconMoon className="w-4 h-4" />}
-              </button>
-              {/* Sync Button */}
-              <button
-                onClick={handleManualSync}
-                disabled={syncing}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-sm cursor-pointer transition-all ${syncing ? "bg-blue-50 dark:bg-blue-900/50 border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400" : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 hover:border-slate-300"}`}
-              >
-                <IconRefresh className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
-                <span className="hidden sm:inline font-medium">{syncing ? "Đang tải..." : "Đồng bộ"}</span>
-              </button>
-              {/* Add Button */}
-              <button
-                onClick={() => {
-                  if (tab === "customers") { setEditCustomer(null); setShowCustomer(true); }
-                  else if (tab === "products") { setEditProduct(null); setShowProduct(true); }
-                  else setShowOrder(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 cursor-pointer text-sm shadow-lg shadow-blue-500/25"
-              >
-                <IconPlus className="w-4 h-4" />
-                <span className="hidden sm:inline font-medium">Thêm mới</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* New Orders Notification */}
-      {newOrdersCount > 0 && tab !== "orders" && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3">
-          <button 
-            onClick={() => { setTab("orders"); setNewOrdersCount(0); }}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-500 text-white font-medium hover:bg-blue-600 cursor-pointer animate-pulse"
-          >
-            <IconClipboard className="w-4 h-4" />
-            Có {newOrdersCount} đơn hàng mới! Xem ngay
-          </button>
-        </div>
-      )}
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        {/* Sync Status Bar */}
-        <div className="flex items-center justify-between mb-3 text-xs text-slate-500 dark:text-slate-400">
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${syncing ? "bg-blue-500 animate-pulse" : "bg-emerald-500"}`}></span>
-            <span>{syncing ? "Đang đồng bộ..." : "Tự động đồng bộ mỗi 10s"}</span>
-          </div>
-          {lastSync && (
-            <span>Lần cuối: {lastSync.toLocaleTimeString("vi-VN")}</span>
-          )}
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-3 mb-4">
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border dark:border-slate-700 shadow-sm">
-            <div className="text-xs text-slate-500 dark:text-slate-400">Doanh thu</div>
-            <div className="text-lg font-bold dark:text-white">{formatCurrency(stats.revenue)}</div>
-          </div>
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border dark:border-slate-700 shadow-sm">
-            <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1"><IconHeart className="w-3 h-3 text-pink-500" /> Tip</div>
-            <div className="text-lg font-bold text-pink-600 dark:text-pink-400">{formatCurrency(stats.tip)}</div>
-          </div>
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border dark:border-slate-700 shadow-sm">
-            <div className="text-xs text-slate-500 dark:text-slate-400">Chờ TT</div>
-            <div className="text-lg font-bold text-amber-600 dark:text-amber-400">{stats.pendingPay}</div>
-          </div>
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border dark:border-slate-700 shadow-sm">
-            <div className="text-xs text-slate-500 dark:text-slate-400">Chờ giao</div>
-            <div className="text-lg font-bold text-blue-600 dark:text-blue-400">{stats.pendingShip}</div>
-          </div>
-        </div>
-
-        {/* Tabs + Search */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-4">
-          <div className="flex bg-white dark:bg-slate-800 rounded-lg p-1 border dark:border-slate-700 shadow-sm">
-            {tabs.map(t => (
-              <button key={t.id} onClick={() => { setTab(t.id); setSearch(""); }} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium cursor-pointer text-sm ${tab === t.id ? "bg-blue-600 text-white shadow" : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"}`}>
-                <t.icon className="w-4 h-4" />
-                <span className="hidden sm:inline">{t.label}</span>
-                <span className={`text-xs px-1.5 py-0.5 rounded-full ${tab === t.id ? "bg-white/20" : "bg-slate-100 dark:bg-slate-600"}`}>{t.count}</span>
-              </button>
-            ))}
-          </div>
-          <div className="flex-1 relative">
-            <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tìm kiếm..." className="w-full pl-9 pr-4 py-2 rounded-lg bg-white dark:bg-slate-800 border dark:border-slate-700 shadow-sm text-sm dark:text-white outline-none focus:border-blue-500" />
-          </div>
-        </div>
-
-        {/* Filters */}
-        {tab === "orders" && (
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <div className="flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-              <IconFilter className="w-4 h-4" /> Lọc:
-            </div>
-            <FilterDropdown label="Thanh toán" icon={IconBanknotes} value={filterPayment} options={PAYMENT_OPTIONS} onChange={setFilterPayment} />
-            <FilterDropdown label="Giao hàng" icon={IconTruck} value={filterShipping} options={SHIPPING_OPTIONS} onChange={setFilterShipping} />
-            {hasFilters && (
-              <button onClick={() => { setFilterPayment(""); setFilterShipping(""); }} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 cursor-pointer">
-                <IconX className="w-3.5 h-3.5" /> Xóa lọc
-              </button>
-            )}
-            <div className="text-xs text-slate-500 ml-auto">{filteredOrders.length} / {orders.length} đơn</div>
-          </div>
-        )}
-
-        {/* Orders */}
-        {tab === "orders" && (
-          <div className="bg-white dark:bg-slate-800 rounded-xl border dark:border-slate-700 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-slate-50 dark:bg-slate-700/50 border-b dark:border-slate-700">
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Mã đơn</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Khách hàng</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Tổng tiền</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Tip</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Thanh toán</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Giao hàng</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Ngày</th>
-                    <th className="px-4 py-2.5"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y dark:divide-slate-700">
-                  {filteredOrders.map(order => {
-                    const cust = customers.find(c => c.customer_id === order.customer_id);
-                    const pay = calculatePaymentStatus(order, transactions);
-                    return (
-                      <tr key={order.order_id} className="hover:bg-slate-50/50 dark:hover:bg-slate-700/50">
-                        <td className="px-4 py-2.5"><span className="font-semibold text-blue-600 dark:text-blue-400 text-sm">{order.order_code}</span></td>
-                        <td className="px-4 py-2.5">
-                          <div className="font-medium text-sm dark:text-white">{cust?.full_name || "N/A"}</div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400">{cust?.phone_number}</div>
-                        </td>
-                        <td className="px-4 py-2.5 font-semibold text-sm dark:text-white">{formatCurrency(order.total_amount)}</td>
-                        <td className="px-4 py-2.5">
-                          {pay.tip > 0 ? (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-pink-50 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400">
-                              <IconHeart className="w-3 h-3" /> +{formatCurrency(pay.tip)}
-                            </span>
-                          ) : <span className="text-xs text-slate-400">-</span>}
-                        </td>
-                        <td className="px-4 py-2.5"><PaymentBadge order={order} transactions={transactions} /></td>
-                        <td className="px-4 py-2.5"><ShippingBadge status={order.shipping_status} /></td>
-                        <td className="px-4 py-2.5 text-xs text-slate-500 dark:text-slate-400">{order.created_at}</td>
-                        <td className="px-4 py-2.5 text-right">
-                          <button onClick={() => setSelectedOrder(order)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer"><IconEye className="w-4 h-4 text-slate-600 dark:text-slate-400" /></button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {filteredOrders.length === 0 && <div className="text-center py-8 text-slate-500 dark:text-slate-400 text-sm">{search || hasFilters ? "Không tìm thấy" : "Chưa có đơn hàng"}</div>}
-          </div>
-        )}
-
-        {/* Customers */}
-        {tab === "customers" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {filteredCustomers.map(c => (
-              <div key={c.customer_id} className="bg-white dark:bg-slate-800 rounded-xl p-4 border dark:border-slate-700 shadow-sm hover:shadow-md cursor-pointer group" onClick={() => { setEditCustomer(c); setShowCustomer(true); }}>
-                <div className="flex items-start justify-between mb-2">
-                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-bold">{(c.full_name || "?").charAt(0)}</div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-                    <button onClick={e => { e.stopPropagation(); setEditCustomer(c); setShowCustomer(true); }} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer"><IconPencil className="w-3.5 h-3.5 text-slate-400" /></button>
-                    <button onClick={e => { e.stopPropagation(); setDeleteConfirm({ type: "customer", id: c.customer_id, name: c.full_name }); }} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/30 rounded cursor-pointer"><IconTrash className="w-3.5 h-3.5 text-red-400" /></button>
-                  </div>
-                </div>
-                <div className="font-semibold text-sm dark:text-white">{c.full_name}</div>
-                <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400"><IconPhone className="w-3 h-3" />{c.phone_number}</div>
-                {c.address && <div className="flex items-start gap-1 text-xs text-slate-500 dark:text-slate-400 mt-1"><IconMapPin className="w-3 h-3 mt-0.5" /><span className="line-clamp-1">{c.address}</span></div>}
-              </div>
-            ))}
-            {filteredCustomers.length === 0 && <div className="col-span-full text-center py-8 text-slate-500 dark:text-slate-400 text-sm">{search ? "Không tìm thấy" : "Chưa có khách hàng"}</div>}
-          </div>
-        )}
-
-        {/* Products */}
-        {tab === "products" && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {filteredProducts.map(p => (
-              <div key={p.product_id} className={`bg-white dark:bg-slate-800 rounded-xl overflow-hidden border dark:border-slate-700 shadow-sm hover:shadow-md cursor-pointer group ${p.is_active === false || p.is_active === "FALSE" ? "border-red-200 dark:border-red-800 bg-red-50/30 dark:bg-red-900/20" : ""}`} onClick={() => { setEditProduct(p); setShowProduct(true); }}>
-                <div className="aspect-square bg-slate-100 dark:bg-slate-700 relative">
-                  {p.image_url ? <img src={p.image_url} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-400"><IconPackage className="w-12 h-12" /></div>}
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100">
-                    <button onClick={e => { e.stopPropagation(); setDeleteConfirm({ type: "product", id: p.product_id, name: p.product_name }); }} className="p-1 rounded bg-white/90 dark:bg-slate-800/90 hover:bg-red-50 dark:hover:bg-red-900/50 cursor-pointer shadow"><IconTrash className="w-3.5 h-3.5 text-red-500" /></button>
-                  </div>
-                </div>
-                <div className="p-3">
-                  <div className="flex items-start justify-between">
-                    <div className="font-semibold text-sm dark:text-white line-clamp-1">{p.product_name}</div>
-                    {(p.is_active === false || p.is_active === "FALSE") && <span className="text-xs px-1.5 py-0.5 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 rounded-full">Ngừng</span>}
-                  </div>
-                  <div className="text-base font-bold text-blue-600 dark:text-blue-400">{formatCurrency(p.price)}</div>
-                </div>
-              </div>
-            ))}
-            {filteredProducts.length === 0 && <div className="col-span-full text-center py-8 text-slate-500 dark:text-slate-400 text-sm">{search ? "Không tìm thấy" : "Chưa có sản phẩm"}</div>}
-          </div>
-        )}
-
-        {/* SePay Tab */}
-        {tab === "sepay" && (
-          <>
-            {/* SePay Filters */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl border dark:border-slate-700 shadow-sm p-4 mb-4">
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="flex-1 min-w-[200px]">
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Tìm kiếm (mã GD, nội dung)</label>
-                  <div className="relative">
-                    <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={sepaySearch}
-                      onChange={e => setSepaySearch(e.target.value)}
-                      placeholder="Nhập mã giao dịch, nội dung..."
-                      className="w-full pl-9 pr-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm outline-none focus:border-blue-500"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Từ ngày</label>
-                  <input
-                    type="date"
-                    value={sepayDateFrom}
-                    onChange={e => setSepayDateFrom(e.target.value)}
-                    className="px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Đến ngày</label>
-                  <input
-                    type="date"
-                    value={sepayDateTo}
-                    onChange={e => setSepayDateTo(e.target.value)}
-                    className="px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Số tiền từ</label>
-                  <input
-                    type="number"
-                    value={sepayAmountMin}
-                    onChange={e => setSepayAmountMin(e.target.value)}
-                    placeholder="0"
-                    className="w-28 px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Số tiền đến</label>
-                  <input
-                    type="number"
-                    value={sepayAmountMax}
-                    onChange={e => setSepayAmountMax(e.target.value)}
-                    placeholder="∞"
-                    className="w-28 px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Sắp xếp</label>
-                  <select
-                    value={sepaySortOrder}
-                    onChange={e => setSepaySortOrder(e.target.value)}
-                    className="px-3 py-2 rounded-lg border dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm outline-none focus:border-blue-500 bg-white"
-                  >
-                    <option value="newest">Mới nhất</option>
-                    <option value="oldest">Cũ nhất</option>
-                  </select>
-                </div>
-                {hasSepayFilters && (
-                  <button
-                    onClick={() => {
-                      setSepaySearch("");
-                      setSepayDateFrom("");
-                      setSepayDateTo("");
-                      setSepayAmountMin("");
-                      setSepayAmountMax("");
-                      setSepaySortOrder("newest");
-                    }}
-                    className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 cursor-pointer"
-                  >
-                    <IconX className="w-4 h-4" /> Xóa lọc
-                  </button>
-                )}
-              </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 mt-2">{filteredTransactions.length} / {transactions.length} giao dịch</div>
-            </div>
-
-            {/* SePay Table */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl border dark:border-slate-700 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-700/50 border-b dark:border-slate-700">
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Ngày GD</th>
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Mã tham chiếu</th>
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Nội dung</th>
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Ngân hàng</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Số tiền</th>
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">Đơn hàng</th>
-                      <th className="px-4 py-2.5"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y dark:divide-slate-700">
-                    {filteredTransactions.map((tx, idx) => (
-                      <tr key={tx.reference_code || tx.transaction_id || idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-700/50">
-                        <td className="px-4 py-2.5 text-sm text-slate-600 dark:text-slate-300">{tx.transaction_time}</td>
-                        <td className="px-4 py-2.5">
-                          <span className="font-mono text-xs bg-slate-100 dark:bg-slate-700 dark:text-slate-300 px-2 py-1 rounded">{tx.reference_code || "-"}</span>
-                        </td>
-                        <td className="px-4 py-2.5 text-sm dark:text-slate-300 max-w-xs truncate">{tx.content || "-"}</td>
-                        <td className="px-4 py-2.5 text-sm text-slate-600 dark:text-slate-400">{tx.bank || "-"}</td>
-                        <td className="px-4 py-2.5 text-right font-semibold text-sm text-emerald-600 dark:text-emerald-400">{formatCurrency(tx.amount)}</td>
-                        <td className="px-4 py-2.5">
-                          {tx.order_code ? (
-                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400">{tx.order_code}</span>
-                          ) : (
-                            <span className="text-xs text-slate-400">Chưa khớp</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2.5 text-right">
-                          {!tx.order_code ? (
-                            <button
-                              onClick={() => setMatchingTx(tx)}
-                              className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 rounded hover:bg-blue-200 dark:hover:bg-blue-900 cursor-pointer"
-                            >
-                              Khớp đơn
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleUnmatchTransaction(tx)}
-                              className="px-2 py-1 text-xs text-red-600 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-900/30 cursor-pointer"
-                            >
-                              Xóa khớp
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {filteredTransactions.length === 0 && (
-                <div className="text-center py-8 text-slate-500 text-sm">
-                  {hasSepayFilters ? "Không tìm thấy giao dịch phù hợp" : "Chưa có giao dịch"}
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </main>
-
-      {/* Modals */}
-      {showCustomer && <CustomerModal customer={editCustomer} onSave={saveCustomer} onClose={() => { setShowCustomer(false); setEditCustomer(null); }} />}
-      {showProduct && <ProductModal product={editProduct} onSave={saveProduct} onClose={() => { setShowProduct(false); setEditProduct(null); }} />}
-      {showOrder && <OrderModal customers={customers} products={products} onSave={createOrder} onClose={() => setShowOrder(false)} />}
-      {selectedOrder && (
-        <OrderDetailModal
-          order={selectedOrder}
-          customer={customers.find(c => c.customer_id === selectedOrder.customer_id)}
-          products={products}
-          transactions={transactions}
-          onUpdate={updateOrder}
-          onDelete={deleteOrder}
-          onMatchTransaction={handleMatchOrder}
-          onUnmatchTransaction={handleUnmatchTransaction}
-          onClose={() => setSelectedOrder(null)}
-        />
-      )}
-      {showTx && (
-        <TransactionsModal
-          transactions={transactions}
-          orders={orders}
-          onSaveTransaction={saveTransaction}
-          onUnmatchTransaction={handleUnmatchTransaction}
-          onClose={() => setShowTx(false)}
-        />
-      )}
-      {matchingTx && <MatchOrderModal transaction={matchingTx} orders={orders} onMatch={handleMatchOrder} onClose={() => setMatchingTx(null)} />}
-      {deleteConfirm && (
-        <ConfirmModal
-          title={`Xóa ${deleteConfirm.type === "customer" ? "khách hàng" : "sản phẩm"}?`}
-          message={`Xóa "${deleteConfirm.name}"?`}
-          onConfirm={() => deleteConfirm.type === "customer" ? deleteCustomer(deleteConfirm.id) : deleteProduct(deleteConfirm.id)}
-          onClose={() => setDeleteConfirm(null)}
-        />
-      )}
-    </div>
+    <CustomerOrder
+      products={products}
+      onCreateOrder={createOrder}
+      onNavigateAdmin={() => navigate("/admin")}
+    />
   );
 }
