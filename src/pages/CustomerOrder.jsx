@@ -26,6 +26,9 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   const [provinceCode, setProvinceCode] = useState("");
   const [districtCode, setDistrictCode] = useState("");
   const [wardCode, setWardCode] = useState("");
+  const [provinceSearch, setProvinceSearch] = useState("");
+  const [districtSearch, setDistrictSearch] = useState("");
+  const [wardSearch, setWardSearch] = useState("");
   const [addressDetail, setAddressDetail] = useState("");
   const [manualAddress, setManualAddress] = useState("");
 
@@ -69,6 +72,9 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
     setProvinceCode("");
     setDistrictCode("");
     setWardCode("");
+    setProvinceSearch("");
+    setDistrictSearch("");
+    setWardSearch("");
   }, [useLegacyAddress]);
 
   const legacyProvinceList = useMemo(() => (
@@ -125,6 +131,18 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   const provinceOptions = useLegacyAddress ? legacyProvinceList : apiProvinceList;
   const districtOptions = useLegacyAddress ? legacyDistrictList : apiDistrictList;
   const wardOptions = useLegacyAddress ? legacyWardList : apiWardList;
+  const provinceQuery = normalizeSearchValue(provinceSearch);
+  const districtQuery = normalizeSearchValue(districtSearch);
+  const wardQuery = normalizeSearchValue(wardSearch);
+  const filteredProvinceOptions = provinceQuery
+    ? provinceOptions.filter(p => includesSearchValue(p.name, provinceQuery))
+    : provinceOptions;
+  const filteredDistrictOptions = districtQuery
+    ? districtOptions.filter(d => includesSearchValue(d.name, districtQuery))
+    : districtOptions;
+  const filteredWardOptions = wardQuery
+    ? wardOptions.filter(w => includesSearchValue(w.name, wardQuery))
+    : wardOptions;
 
   const selectedProvinceName = useLegacyAddress
     ? legacyProvinces[provinceCode]?.name_with_type || legacyProvinces[provinceCode]?.name
@@ -365,28 +383,46 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
                     setProvinceCode(event.target.value);
                     setDistrictCode("");
                     setWardCode("");
+                    setDistrictSearch("");
+                    setWardSearch("");
                   }}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm"
                 >
                   <option value="">{addressLoading ? "Đang tải tỉnh/TP..." : "Chọn Tỉnh/TP"}</option>
-                  {provinceOptions.map(p => (
+                  {filteredProvinceOptions.map(p => (
                     <option key={p.code} value={p.code}>{p.name}</option>
                   ))}
                 </select>
+                <input
+                  type="text"
+                  value={provinceSearch}
+                  onChange={event => setProvinceSearch(event.target.value)}
+                  placeholder="Tìm Tỉnh/TP"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm"
+                />
                 <select
                   value={districtCode}
                   onChange={event => {
                     setDistrictCode(event.target.value);
                     setWardCode("");
+                    setWardSearch("");
                   }}
                   disabled={!provinceCode}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm disabled:opacity-60"
                 >
                   <option value="">Chọn Quận/Huyện</option>
-                  {districtOptions.map(d => (
+                  {filteredDistrictOptions.map(d => (
                     <option key={d.code} value={d.code}>{d.name}</option>
                   ))}
                 </select>
+                <input
+                  type="text"
+                  value={districtSearch}
+                  onChange={event => setDistrictSearch(event.target.value)}
+                  placeholder="Tìm Quận/Huyện"
+                  disabled={!provinceCode}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm disabled:opacity-60"
+                />
                 <select
                   value={wardCode}
                   onChange={event => setWardCode(event.target.value)}
@@ -394,10 +430,18 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm disabled:opacity-60"
                 >
                   <option value="">Chọn Phường/Xã</option>
-                  {wardOptions.map(w => (
+                  {filteredWardOptions.map(w => (
                     <option key={w.code} value={w.code}>{w.name}</option>
                   ))}
                 </select>
+                <input
+                  type="text"
+                  value={wardSearch}
+                  onChange={event => setWardSearch(event.target.value)}
+                  placeholder="Tìm Phường/Xã"
+                  disabled={!districtCode}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm disabled:opacity-60"
+                />
                 <input
                   type="text"
                   value={addressDetail}
