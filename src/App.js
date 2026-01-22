@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AdminLogin from "./components/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
 import CustomerOrder from "./pages/CustomerOrder";
 import { getAPI, postAPI } from "./api/api";
@@ -36,6 +37,7 @@ const SEPAY_INTERVAL = 15000; // 15 seconds
 // ============ MAIN APP ============
 export default function App() {
   const [route, setRoute] = useState(() => window.location.pathname || "/order");
+  const [isAdminAuthed, setIsAdminAuthed] = useState(() => localStorage.getItem("adminAuthed") === "true");
   const [tab, setTab] = useState("orders");
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -111,6 +113,22 @@ export default function App() {
       navigate("/order", { replace: true });
     }
   }, [route, navigate]);
+
+  const handleAdminLogin = useCallback(({ username, password }) => {
+    const adminUser = localStorage.getItem("adminUser") || "admin";
+    const adminPass = localStorage.getItem("adminPass") || "admin123";
+    const success = username === adminUser && password === adminPass;
+    if (success) {
+      localStorage.setItem("adminAuthed", "true");
+      setIsAdminAuthed(true);
+    }
+    return success;
+  }, []);
+
+  const handleAdminLogout = useCallback(() => {
+    localStorage.removeItem("adminAuthed");
+    setIsAdminAuthed(false);
+  }, []);
 
   const parseItemsJson = (itemsJson, fallbackItems = [], orderCode = "") => {
     if (!itemsJson) {
@@ -491,6 +509,9 @@ export default function App() {
   const isAdminRoute = (route || "").startsWith("/admin");
 
   if (isAdminRoute) {
+    if (!isAdminAuthed) {
+      return <AdminLogin onLogin={handleAdminLogin} />;
+    }
     return (
       <AdminDashboard
         lastSync={lastSync}
@@ -565,6 +586,7 @@ export default function App() {
         deleteCustomer={deleteCustomer}
         deleteProduct={deleteProduct}
         onNavigateOrder={() => navigate("/order")}
+        onLogout={handleAdminLogout}
       />
     );
   }

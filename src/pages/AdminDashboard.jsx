@@ -134,7 +134,8 @@ export default function AdminDashboard({
   handleUnmatchTransaction,
   saveTransaction,
   markOrderDelivered,
-  onNavigateOrder
+  onNavigateOrder,
+  onLogout
 }) {
   const tabs = [
     { id: "orders", label: "Đơn hàng", icon: IconClipboard, count: orders.length },
@@ -169,6 +170,12 @@ export default function AdminDashboard({
               >
                 <IconPackage className="w-4 h-4" />
                 <span className="font-medium">Giao diện khách</span>
+              </button>
+              <button
+                onClick={onLogout}
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-sm cursor-pointer transition-all border-red-200 dark:border-red-800 text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30"
+              >
+                Đăng xuất
               </button>
               {/* Dark Mode Toggle */}
               <button
