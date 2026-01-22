@@ -115,8 +115,8 @@ export default function App() {
   }, [route, navigate]);
 
   const handleAdminLogin = useCallback(({ username, password }) => {
-    const adminUser = localStorage.getItem("adminUser") || "admin";
-    const adminPass = localStorage.getItem("adminPass") || "admin123";
+    const adminUser = localStorage.getItem("adminUser") || "nhtameomeo";
+    const adminPass = localStorage.getItem("adminPass") || "M4n14c@0305";
     const success = username === adminUser && password === adminPass;
     if (success) {
       localStorage.setItem("adminAuthed", "true");
