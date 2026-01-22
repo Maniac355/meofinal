@@ -4,12 +4,6 @@ import { generateId } from "../utils/ids";
 import { includesSearchValue, normalizeSearchValue } from "../utils/search";
 import { IconCheck, IconPackage, IconSearch } from "../components/Icons";
 import SearchableCombobox from "../components/SearchableCombobox";
-import legacyProvinces from "../data/legacy_tinh_tp.json";
-import legacyDistricts from "../data/legacy_quan_huyen.json";
-import legacyWards from "../data/legacy_xa_phuong.json";
-import newProvinces from "../data/new_tinh_tp.json";
-import newDistricts from "../data/new_quan_huyen.json";
-import newWards from "../data/new_xa_phuong.json";
 
 export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin }) {
   const [form, setForm] = useState({
@@ -23,7 +17,10 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   const [lastOrder, setLastOrder] = useState(null);
   const [showPaidConfirm, setShowPaidConfirm] = useState(false);
   const [paidNote, setPaidNote] = useState("");
-  const [addressMode, setAddressMode] = useState("new");
+  const MODE_BEFORE = "before";
+  const MODE_AFTER = "after";
+  const [addressMode, setAddressMode] = useState(MODE_AFTER);
+  const [addressFallback, setAddressFallback] = useState(false);
   const [provinceId, setProvinceId] = useState("");
   const [districtId, setDistrictId] = useState("");
   const [wardId, setWardId] = useState("");
@@ -31,10 +28,25 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   const [districtInput, setDistrictInput] = useState("");
   const [wardInput, setWardInput] = useState("");
   const [addressDetail, setAddressDetail] = useState("");
+  const [fallbackAddress, setFallbackAddress] = useState("");
   const [showAddressErrors, setShowAddressErrors] = useState(false);
-  const previousSelectionRef = useRef(null);
+  const [provinceOptions, setProvinceOptions] = useState([]);
+  const [districtOptions, setDistrictOptions] = useState([]);
+  const [wardOptions, setWardOptions] = useState([]);
+  const [loadingProvinces, setLoadingProvinces] = useState(false);
+  const [loadingDistricts, setLoadingDistricts] = useState(false);
+  const [loadingWards, setLoadingWards] = useState(false);
+  const cacheRef = useRef({
+    provinces: {
+      [MODE_BEFORE]: null,
+      [MODE_AFTER]: null
+    },
+    districtsByProvince: {},
+    wardsByDistrict: {},
+    wardsByProvince: {}
+  });
 
-  const isLegacyMode = addressMode === "old";
+  const isBeforeMode = addressMode === MODE_BEFORE;
 
   const activeProducts = useMemo(
     () => products.filter(p => p.is_active === true || p.is_active === "TRUE"),
@@ -45,213 +57,234 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   const total = items.reduce((sum, item) => sum + item.subtotal, 0);
   const isValid = items.length > 0 && form.full_name.trim() && form.phone_number.trim();
 
-  const addressLoading = false;
-
-  const legacyProvinceList = useMemo(() => (
-    Object.values(legacyProvinces).map(p => ({
-      value: p.code,
-      label: p.name_with_type || p.name
-    })).sort((a, b) => a.label.localeCompare(b.label, "vi"))
-  ), []);
-
-  const legacyDistrictList = useMemo(() => (
-    Object.values(legacyDistricts)
-      .filter(d => d.parent_code === provinceId)
-      .map(d => ({ value: d.code, label: d.name_with_type || d.name }))
-      .sort((a, b) => a.label.localeCompare(b.label, "vi"))
-  ), [provinceId]);
-
-  const legacyWardList = useMemo(() => (
-    Object.values(legacyWards)
-      .filter(w => w.parent_code === districtId)
-      .map(w => ({ value: w.code, label: w.name_with_type || w.name }))
-      .sort((a, b) => a.label.localeCompare(b.label, "vi"))
-  ), [districtId]);
-
-  const newProvinceEntries = useMemo(() => Object.values(newProvinces), []);
-  const newProvinceList = useMemo(() => (
-    newProvinceEntries.map(p => ({
-      value: p.code,
-      label: p.name_with_type || p.name
-    })).sort((a, b) => a.label.localeCompare(b.label, "vi"))
-  ), [newProvinceEntries]);
-
-  const newDistrictList = useMemo(() => (
-    Object.values(newDistricts)
-      .filter(d => d.parent_code === provinceId)
-      .map(d => ({ value: d.code, label: d.name_with_type || d.name }))
-      .sort((a, b) => a.label.localeCompare(b.label, "vi"))
-  ), [provinceId]);
-
-  const newWardList = useMemo(() => (
-    Object.values(newWards)
-      .filter(w => w.parent_code === districtId)
-      .map(w => ({ value: w.code, label: w.name_with_type || w.name }))
-      .sort((a, b) => a.label.localeCompare(b.label, "vi"))
-  ), [districtId]);
-
-  const provinceOptions = isLegacyMode ? legacyProvinceList : newProvinceList;
-  const districtOptions = isLegacyMode ? legacyDistrictList : newDistrictList;
-  const wardOptions = isLegacyMode ? legacyWardList : newWardList;
+  const baseUrl = addressMode === MODE_BEFORE
+    ? "https://provinces.open-api.vn/api/v1"
+    : "https://provinces.open-api.vn/api/v2";
 
   const selectedProvinceName = provinceOptions.find(p => p.value === provinceId)?.label;
   const selectedDistrictName = districtOptions.find(d => d.value === districtId)?.label;
   const selectedWardName = wardOptions.find(w => w.value === wardId)?.label;
 
-  const builtAddress = [addressDetail, selectedWardName, selectedDistrictName, selectedProvinceName]
-    .filter(Boolean)
-    .join(", ");
+  const administrativeAddress = addressFallback
+    ? fallbackAddress
+    : [
+      selectedWardName,
+      isBeforeMode ? selectedDistrictName : null,
+      selectedProvinceName
+    ].filter(Boolean).join(", ");
+  const builtAddress = [addressDetail, administrativeAddress].filter(Boolean).join(", ");
   const shippingAddress = builtAddress;
 
-  const addressValid = Boolean(provinceId && districtId && wardId);
+  const addressValid = addressFallback
+    ? true
+    : isBeforeMode
+      ? Boolean(provinceId && districtId && wardId)
+      : Boolean(provinceId && wardId);
   const formValid = isValid && addressValid;
-  const isNewProvinceDataOutdated = !isLegacyMode && newProvinceEntries.length !== 34;
 
-  const provinceError = showAddressErrors && !provinceId
+  const provinceError = showAddressErrors && !addressFallback && !provinceId
     ? "Vui lòng chọn Tỉnh/TP"
     : "";
-  const districtError = showAddressErrors && provinceId && !districtId
+  const districtError = showAddressErrors && !addressFallback && isBeforeMode && provinceId && !districtId
     ? "Vui lòng chọn Quận/Huyện"
     : "";
-  const wardError = showAddressErrors && districtId && !wardId
+  const wardError = showAddressErrors && !addressFallback && ((isBeforeMode && districtId && !wardId) || (!isBeforeMode && provinceId && !wardId))
     ? "Vui lòng chọn Phường/Xã"
     : "";
 
-  // TODO: populate mapping tables when old/new datasets are integrated.
-  const mappingOldToNew = useMemo(() => ({
-    provinces: {},
-    districts: {},
-    wards: {}
-  }), []);
-
-  const mappingNewToOld = useMemo(() => ({
-    provinces: {},
-    districts: {},
-    wards: {}
-  }), []);
-
-  const findNewPathByWardId = (targetWardId) => {
-    const ward = newWards[targetWardId];
-    if (!ward) return null;
-    const district = newDistricts[ward.parent_code];
-    if (!district) return null;
-    return {
-      provinceId: district.parent_code,
-      districtId: ward.parent_code,
-      wardId: targetWardId
-    };
-  };
-
-  const findNewPathByDistrictId = (targetDistrictId) => {
-    const district = newDistricts[targetDistrictId];
-    if (!district) return null;
-    return {
-      provinceId: district.parent_code,
-      districtId: targetDistrictId,
-      wardId: ""
-    };
-  };
-
-  const findOldPathByWardId = (targetWardId) => {
-    const ward = legacyWards[targetWardId];
-    if (!ward) return null;
-    const district = legacyDistricts[ward.parent_code];
-    if (!district) return null;
-    return {
-      provinceId: district.parent_code,
-      districtId: ward.parent_code,
-      wardId: targetWardId
-    };
-  };
-
-  const findOldPathByDistrictId = (targetDistrictId) => {
-    const district = legacyDistricts[targetDistrictId];
-    if (!district) return null;
-    return {
-      provinceId: district.parent_code,
-      districtId: targetDistrictId,
-      wardId: ""
-    };
-  };
-
-  const applyMappedSelection = (fromSelection) => {
-    if (!fromSelection) return;
-    const { mode, provinceId: prevProvinceId, districtId: prevDistrictId, wardId: prevWardId } = fromSelection;
-    const movingToLegacy = addressMode === "old";
-    const mapping = movingToLegacy ? mappingNewToOld : mappingOldToNew;
-
-    let nextPath = null;
-    if (prevWardId && mapping.wards?.[prevWardId]) {
-      const mappedWardId = mapping.wards[prevWardId];
-      nextPath = movingToLegacy ? findOldPathByWardId(mappedWardId) : findNewPathByWardId(mappedWardId);
-    } else if (prevDistrictId && mapping.districts?.[prevDistrictId]) {
-      const mappedDistrictId = mapping.districts[prevDistrictId];
-      nextPath = movingToLegacy ? findOldPathByDistrictId(mappedDistrictId) : findNewPathByDistrictId(mappedDistrictId);
-    } else if (prevProvinceId && mapping.provinces?.[prevProvinceId]) {
-      nextPath = {
-        provinceId: mapping.provinces[prevProvinceId],
-        districtId: "",
-        wardId: ""
-      };
+  const fetchJSON = async (url, { timeoutMs = 7000 } = {}) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return await response.json();
+    } finally {
+      clearTimeout(timeout);
     }
+  };
 
-    if (!nextPath) {
-      setProvinceId("");
-      setDistrictId("");
-      setWardId("");
-      setProvinceInput("");
-      setDistrictInput("");
-      setWardInput("");
+  const fetchWithRetry = async (url, options, retries = 1) => {
+    let lastError;
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        return await fetchJSON(url, options);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError;
+  };
+
+  const handleFetchFailure = () => {
+    setAddressFallback(true);
+    setLoadingProvinces(false);
+    setLoadingDistricts(false);
+    setLoadingWards(false);
+  };
+
+  const loadProvinces = async (mode) => {
+    const cached = cacheRef.current.provinces[mode];
+    if (cached) {
+      setProvinceOptions(cached);
       return;
     }
+    setLoadingProvinces(true);
+    try {
+      const data = await fetchWithRetry(`${mode === MODE_BEFORE ? "https://provinces.open-api.vn/api/v1" : "https://provinces.open-api.vn/api/v2"}/p`, { timeoutMs: 7000 });
+      const options = (data || [])
+        .map(p => ({ value: p.code, label: p.name }))
+        .sort((a, b) => a.label.localeCompare(b.label, "vi"));
+      cacheRef.current.provinces[mode] = options;
+      setProvinceOptions(options);
+      setAddressFallback(false);
+    } catch (error) {
+      handleFetchFailure();
+    } finally {
+      setLoadingProvinces(false);
+    }
+  };
 
-    setProvinceId(nextPath.provinceId || "");
-    setDistrictId(nextPath.districtId || "");
-    setWardId(nextPath.wardId || "");
-    const nextProvinceLabel = movingToLegacy
-      ? legacyProvinces[nextPath.provinceId]?.name_with_type || legacyProvinces[nextPath.provinceId]?.name || ""
-      : newProvinces[nextPath.provinceId]?.name_with_type || newProvinces[nextPath.provinceId]?.name || "";
-    const nextDistrictLabel = movingToLegacy
-      ? legacyDistricts[nextPath.districtId]?.name_with_type || legacyDistricts[nextPath.districtId]?.name || ""
-      : newDistricts[nextPath.districtId]?.name_with_type || newDistricts[nextPath.districtId]?.name || "";
-    const nextWardLabel = movingToLegacy
-      ? legacyWards[nextPath.wardId]?.name_with_type || legacyWards[nextPath.wardId]?.name || ""
-      : newWards[nextPath.wardId]?.name_with_type || newWards[nextPath.wardId]?.name || "";
-    setProvinceInput(nextProvinceLabel);
-    setDistrictInput(nextDistrictLabel);
-    setWardInput(nextWardLabel);
+  const loadDistrictsForProvince = async (provinceCode) => {
+    const cached = cacheRef.current.districtsByProvince[provinceCode];
+    if (cached) {
+      setDistrictOptions(cached);
+      return;
+    }
+    setLoadingDistricts(true);
+    try {
+      const data = await fetchWithRetry(`${baseUrl}/p/${provinceCode}?depth=2`, { timeoutMs: 7000 });
+      const districts = (data?.districts || [])
+        .map(d => ({ value: d.code, label: d.name }))
+        .sort((a, b) => a.label.localeCompare(b.label, "vi"));
+      cacheRef.current.districtsByProvince[provinceCode] = districts;
+      (data?.districts || []).forEach(district => {
+        if (!cacheRef.current.wardsByDistrict[district.code]) {
+          cacheRef.current.wardsByDistrict[district.code] = (district.wards || [])
+            .map(ward => ({ value: ward.code, label: ward.name }))
+            .sort((a, b) => a.label.localeCompare(b.label, "vi"));
+        }
+      });
+      setDistrictOptions(districts);
+      setAddressFallback(false);
+    } catch (error) {
+      handleFetchFailure();
+    } finally {
+      setLoadingDistricts(false);
+    }
+  };
+
+  const loadWardsForDistrict = async (districtCode) => {
+    const cached = cacheRef.current.wardsByDistrict[districtCode];
+    if (cached) {
+      setWardOptions(cached);
+      return;
+    }
+    setLoadingWards(true);
+    try {
+      const data = await fetchWithRetry(`${baseUrl}/d/${districtCode}?depth=2`, { timeoutMs: 7000 });
+      const wards = (data?.wards || [])
+        .map(ward => ({ value: ward.code, label: ward.name }))
+        .sort((a, b) => a.label.localeCompare(b.label, "vi"));
+      cacheRef.current.wardsByDistrict[districtCode] = wards;
+      setWardOptions(wards);
+      setAddressFallback(false);
+    } catch (error) {
+      handleFetchFailure();
+    } finally {
+      setLoadingWards(false);
+    }
+  };
+
+  const loadWardsForProvince = async (provinceCode) => {
+    const cached = cacheRef.current.wardsByProvince[provinceCode];
+    if (cached) {
+      setWardOptions(cached);
+      return;
+    }
+    setLoadingWards(true);
+    try {
+      const data = await fetchWithRetry(`${baseUrl}/p/${provinceCode}?depth=2`, { timeoutMs: 7000 });
+      const wards = (data?.wards || [])
+        .map(ward => ({ value: ward.code, label: ward.name }))
+        .sort((a, b) => a.label.localeCompare(b.label, "vi"));
+      cacheRef.current.wardsByProvince[provinceCode] = wards;
+      setWardOptions(wards);
+      setAddressFallback(false);
+    } catch (error) {
+      handleFetchFailure();
+    } finally {
+      setLoadingWards(false);
+    }
   };
 
   const handleModeToggle = (checked) => {
-    const nextMode = checked ? "old" : "new";
+    const nextMode = checked ? MODE_BEFORE : MODE_AFTER;
     if (nextMode === addressMode) return;
-    previousSelectionRef.current = {
-      mode: addressMode,
-      provinceId,
-      districtId,
-      wardId
-    };
     setShowAddressErrors(false);
     setAddressMode(nextMode);
+    setDistrictId("");
+    setWardId("");
+    setDistrictInput("");
+    setWardInput("");
+    setDistrictOptions([]);
+    setWardOptions([]);
   };
 
   useEffect(() => {
-    if (!previousSelectionRef.current) return;
-    applyMappedSelection(previousSelectionRef.current);
-    previousSelectionRef.current = null;
-  }, [addressMode, legacyDistrictList, legacyProvinceList, legacyWardList, newDistrictList, newProvinceList, newWardList]);
+    if (addressFallback) return;
+    loadProvinces(addressMode);
+  }, [addressFallback, addressMode]);
+
+  useEffect(() => {
+    if (!provinceId || addressFallback) return;
+    if (!provinceOptions.some(option => option.value === provinceId)) return;
+    if (isBeforeMode) {
+      loadDistrictsForProvince(provinceId);
+    } else {
+      loadWardsForProvince(provinceId);
+    }
+  }, [addressFallback, isBeforeMode, provinceId, provinceOptions]);
+
+  useEffect(() => {
+    if (!districtId || addressFallback || !isBeforeMode) return;
+    loadWardsForDistrict(districtId);
+  }, [addressFallback, districtId, isBeforeMode]);
+
+  useEffect(() => {
+    if (!provinceId) return;
+    const exists = provinceOptions.some(option => option.value === provinceId);
+    if (!exists) {
+      setProvinceId("");
+      setProvinceInput("");
+      setDistrictId("");
+      setWardId("");
+      setDistrictInput("");
+      setWardInput("");
+    }
+  }, [provinceId, provinceOptions]);
 
   const resetDistrictAndWard = () => {
     setDistrictId("");
     setWardId("");
     setDistrictInput("");
     setWardInput("");
+    setDistrictOptions([]);
+    setWardOptions([]);
   };
 
   const handleProvinceSelect = (nextId) => {
     setProvinceId(nextId);
     setProvinceInput(provinceOptions.find(option => option.value === nextId)?.label || "");
     resetDistrictAndWard();
+    if (!nextId || addressFallback) return;
+    if (isBeforeMode) {
+      loadDistrictsForProvince(nextId);
+    } else {
+      loadWardsForProvince(nextId);
+    }
   };
 
   const handleProvinceInput = (value, meta) => {
@@ -266,6 +299,9 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
     setDistrictInput(districtOptions.find(option => option.value === nextId)?.label || "");
     setWardId("");
     setWardInput("");
+    setWardOptions([]);
+    if (!nextId || addressFallback) return;
+    loadWardsForDistrict(nextId);
   };
 
   const handleDistrictInput = (value, meta) => {
@@ -274,6 +310,7 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
     if (districtId) setDistrictId("");
     setWardId("");
     setWardInput("");
+    setWardOptions([]);
   };
 
   const handleWardSelect = (nextId) => {
@@ -285,6 +322,25 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
     setWardInput(value);
     if (meta?.fromSelection) return;
     if (wardId) setWardId("");
+  };
+
+  const handleProvinceClear = () => {
+    setProvinceId("");
+    setProvinceInput("");
+    resetDistrictAndWard();
+  };
+
+  const handleDistrictClear = () => {
+    setDistrictId("");
+    setDistrictInput("");
+    setWardId("");
+    setWardInput("");
+    setWardOptions([]);
+  };
+
+  const handleWardClear = () => {
+    setWardId("");
+    setWardInput("");
   };
 
   const toggleProduct = (product) => {
@@ -355,6 +411,7 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
     setDistrictInput("");
     setWardInput("");
     setAddressDetail("");
+    setFallbackAddress("");
   };
 
   const qrContent = lastOrder?.order_code || lastOrder?.order_id || "";
@@ -488,63 +545,76 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
             <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
               <input
                 type="checkbox"
-                checked={isLegacyMode}
+                checked={isBeforeMode}
                 onChange={event => handleModeToggle(event.target.checked)}
                 className="w-4 h-4"
               />
               Dùng địa chỉ trước sáp nhập
             </label>
-            {isNewProvinceDataOutdated && (
-              <div className="text-xs text-amber-600 dark:text-amber-400">
-                Dữ liệu địa danh mới hiện có {newProvinceEntries.length} tỉnh/TP. Vui lòng cập nhật danh mục sau sáp nhập còn 34 tỉnh/TP.
-              </div>
-            )}
             <div className="space-y-3">
-              <SearchableCombobox
-                id="province-combobox"
-                label="Tỉnh/TP"
-                required
-                placeholder="Chọn Tỉnh/TP"
-                options={provinceOptions}
-                value={provinceId}
-                inputValue={provinceInput}
-                onInputChange={handleProvinceInput}
-                onChange={handleProvinceSelect}
-                disabled={addressLoading}
-                loading={addressLoading}
-                error={provinceError}
-                onBlur={() => setShowAddressErrors(true)}
-              />
-              <SearchableCombobox
-                id="district-combobox"
-                label="Quận/Huyện"
-                required
-                placeholder="Chọn Quận/Huyện"
-                options={districtOptions}
-                value={districtId}
-                inputValue={districtInput}
-                onInputChange={handleDistrictInput}
-                onChange={handleDistrictSelect}
-                disabled={!provinceId || addressLoading}
-                loading={addressLoading}
-                error={districtError}
-                onBlur={() => setShowAddressErrors(true)}
-              />
-              <SearchableCombobox
-                id="ward-combobox"
-                label="Phường/Xã"
-                required
-                placeholder="Chọn Phường/Xã"
-                options={wardOptions}
-                value={wardId}
-                inputValue={wardInput}
-                onInputChange={handleWardInput}
-                onChange={handleWardSelect}
-                disabled={!districtId || addressLoading}
-                loading={addressLoading}
-                error={wardError}
-                onBlur={() => setShowAddressErrors(true)}
-              />
+              {!addressFallback && (
+                <>
+                  <SearchableCombobox
+                    id="province-combobox"
+                    label="Tỉnh/TP"
+                    required
+                    placeholder="Chọn Tỉnh/TP"
+                    options={provinceOptions}
+                    value={provinceId}
+                    inputValue={provinceInput}
+                    onInputChange={handleProvinceInput}
+                    onChange={handleProvinceSelect}
+                    onClear={handleProvinceClear}
+                    disabled={loadingProvinces}
+                    loading={loadingProvinces}
+                    error={provinceError}
+                    onBlur={() => setShowAddressErrors(true)}
+                  />
+                  {isBeforeMode && (
+                    <SearchableCombobox
+                      id="district-combobox"
+                      label="Quận/Huyện"
+                      required
+                      placeholder="Chọn Quận/Huyện"
+                      options={districtOptions}
+                      value={districtId}
+                      inputValue={districtInput}
+                      onInputChange={handleDistrictInput}
+                      onChange={handleDistrictSelect}
+                      onClear={handleDistrictClear}
+                      disabled={!provinceId || loadingDistricts}
+                      loading={loadingDistricts}
+                      error={districtError}
+                      onBlur={() => setShowAddressErrors(true)}
+                    />
+                  )}
+                  <SearchableCombobox
+                    id="ward-combobox"
+                    label="Phường/Xã"
+                    required
+                    placeholder="Chọn Phường/Xã"
+                    options={wardOptions}
+                    value={wardId}
+                    inputValue={wardInput}
+                    onInputChange={handleWardInput}
+                    onChange={handleWardSelect}
+                    onClear={handleWardClear}
+                    disabled={isBeforeMode ? !districtId || loadingWards : !provinceId || loadingWards}
+                    loading={loadingWards}
+                    error={wardError}
+                    onBlur={() => setShowAddressErrors(true)}
+                  />
+                </>
+              )}
+              {addressFallback && (
+                <textarea
+                  rows={3}
+                  value={fallbackAddress}
+                  onChange={event => setFallbackAddress(event.target.value)}
+                  placeholder="Nhập địa chỉ đầy đủ"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm"
+                />
+              )}
               <input
                 type="text"
                 value={addressDetail}

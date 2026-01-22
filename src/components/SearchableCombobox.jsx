@@ -12,6 +12,7 @@ export default function SearchableCombobox({
   inputValue,
   onInputChange,
   onChange,
+  onClear,
   disabled = false,
   loading = false,
   error,
@@ -46,11 +47,16 @@ export default function SearchableCombobox({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [onBlur]);
 
-  const selectedOption = options.find(option => option.value === value);
-
   const handleSelect = (option) => {
     onChange(option.value);
     onInputChange(option.label, { fromSelection: true });
+    setIsOpen(false);
+  };
+
+  const handleClear = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onClear?.();
     setIsOpen(false);
   };
 
@@ -125,10 +131,16 @@ export default function SearchableCombobox({
           aria-activedescendant={activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined}
           className={`w-full px-3 py-2 rounded-lg border text-sm dark:bg-slate-700 ${error ? "border-red-400 dark:border-red-500" : "border-slate-200 dark:border-slate-600"} ${disabledState ? "opacity-60 cursor-not-allowed" : ""}`}
         />
-        {selectedOption && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-emerald-600 dark:text-emerald-400">
-            Đã chọn
-          </span>
+        {inputValue && onClear && !disabledState && (
+          <button
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={handleClear}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 dark:text-slate-300 dark:hover:text-white"
+            aria-label="Xóa lựa chọn"
+          >
+            ✕
+          </button>
         )}
       </div>
       {isOpen && !disabledState && (
