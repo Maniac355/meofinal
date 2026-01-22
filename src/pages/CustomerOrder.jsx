@@ -135,7 +135,7 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
     try {
       const data = await fetchWithRetry(`${mode === MODE_BEFORE ? "https://provinces.open-api.vn/api/v1" : "https://provinces.open-api.vn/api/v2"}/p`, { timeoutMs: 7000 });
       const options = (data || [])
-        .map(p => ({ value: p.code, label: p.name }))
+        .map(p => ({ value: String(p.code), label: p.name }))
         .sort((a, b) => a.label.localeCompare(b.label, "vi"));
       cacheRef.current.provinces[mode] = options;
       setProvinceOptions(options);
@@ -148,22 +148,24 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   };
 
   const loadDistrictsForProvince = async (provinceCode) => {
-    const cached = cacheRef.current.districtsByProvince[provinceCode];
+    const provinceKey = String(provinceCode);
+    const cached = cacheRef.current.districtsByProvince[provinceKey];
     if (cached) {
       setDistrictOptions(cached);
       return;
     }
     setLoadingDistricts(true);
     try {
-      const data = await fetchWithRetry(`${baseUrl}/p/${provinceCode}?depth=2`, { timeoutMs: 7000 });
+      const data = await fetchWithRetry(`${baseUrl}/p/${provinceKey}?depth=2`, { timeoutMs: 7000 });
       const districts = (data?.districts || [])
-        .map(d => ({ value: d.code, label: d.name }))
+        .map(d => ({ value: String(d.code), label: d.name }))
         .sort((a, b) => a.label.localeCompare(b.label, "vi"));
-      cacheRef.current.districtsByProvince[provinceCode] = districts;
+      cacheRef.current.districtsByProvince[provinceKey] = districts;
       (data?.districts || []).forEach(district => {
-        if (!cacheRef.current.wardsByDistrict[district.code]) {
-          cacheRef.current.wardsByDistrict[district.code] = (district.wards || [])
-            .map(ward => ({ value: ward.code, label: ward.name }))
+        const districtKey = String(district.code);
+        if (!cacheRef.current.wardsByDistrict[districtKey]) {
+          cacheRef.current.wardsByDistrict[districtKey] = (district.wards || [])
+            .map(ward => ({ value: String(ward.code), label: ward.name }))
             .sort((a, b) => a.label.localeCompare(b.label, "vi"));
         }
       });
@@ -177,18 +179,19 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   };
 
   const loadWardsForDistrict = async (districtCode) => {
-    const cached = cacheRef.current.wardsByDistrict[districtCode];
+    const districtKey = String(districtCode);
+    const cached = cacheRef.current.wardsByDistrict[districtKey];
     if (cached) {
       setWardOptions(cached);
       return;
     }
     setLoadingWards(true);
     try {
-      const data = await fetchWithRetry(`${baseUrl}/d/${districtCode}?depth=2`, { timeoutMs: 7000 });
+      const data = await fetchWithRetry(`${baseUrl}/d/${districtKey}?depth=2`, { timeoutMs: 7000 });
       const wards = (data?.wards || [])
-        .map(ward => ({ value: ward.code, label: ward.name }))
+        .map(ward => ({ value: String(ward.code), label: ward.name }))
         .sort((a, b) => a.label.localeCompare(b.label, "vi"));
-      cacheRef.current.wardsByDistrict[districtCode] = wards;
+      cacheRef.current.wardsByDistrict[districtKey] = wards;
       setWardOptions(wards);
       setAddressFallback(false);
     } catch (error) {
@@ -199,18 +202,19 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   };
 
   const loadWardsForProvince = async (provinceCode) => {
-    const cached = cacheRef.current.wardsByProvince[provinceCode];
+    const provinceKey = String(provinceCode);
+    const cached = cacheRef.current.wardsByProvince[provinceKey];
     if (cached) {
       setWardOptions(cached);
       return;
     }
     setLoadingWards(true);
     try {
-      const data = await fetchWithRetry(`${baseUrl}/p/${provinceCode}?depth=2`, { timeoutMs: 7000 });
+      const data = await fetchWithRetry(`${baseUrl}/p/${provinceKey}?depth=2`, { timeoutMs: 7000 });
       const wards = (data?.wards || [])
-        .map(ward => ({ value: ward.code, label: ward.name }))
+        .map(ward => ({ value: String(ward.code), label: ward.name }))
         .sort((a, b) => a.label.localeCompare(b.label, "vi"));
-      cacheRef.current.wardsByProvince[provinceCode] = wards;
+      cacheRef.current.wardsByProvince[provinceKey] = wards;
       setWardOptions(wards);
       setAddressFallback(false);
     } catch (error) {
