@@ -163,10 +163,11 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
       cacheRef.current.districtsByProvince[provinceKey] = districts;
       (data?.districts || []).forEach(district => {
         const districtKey = String(district.code);
-        if (!cacheRef.current.wardsByDistrict[districtKey]) {
-          cacheRef.current.wardsByDistrict[districtKey] = (district.wards || [])
-            .map(ward => ({ value: String(ward.code), label: ward.name }))
-            .sort((a, b) => a.label.localeCompare(b.label, "vi"));
+        const wards = (district.wards || [])
+          .map(ward => ({ value: String(ward.code), label: ward.name }))
+          .sort((a, b) => a.label.localeCompare(b.label, "vi"));
+        if (!cacheRef.current.wardsByDistrict[districtKey] && wards.length > 0) {
+          cacheRef.current.wardsByDistrict[districtKey] = wards;
         }
       });
       setDistrictOptions(districts);
@@ -181,7 +182,7 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   const loadWardsForDistrict = async (districtCode) => {
     const districtKey = String(districtCode);
     const cached = cacheRef.current.wardsByDistrict[districtKey];
-    if (cached) {
+    if (cached && cached.length > 0) {
       setWardOptions(cached);
       return;
     }
