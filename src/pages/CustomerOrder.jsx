@@ -15,6 +15,8 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   const [productSearch, setProductSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
+  const [showPaidConfirm, setShowPaidConfirm] = useState(false);
+  const [paidNote, setPaidNote] = useState("");
 
   const activeProducts = useMemo(
     () => products.filter(p => p.is_active === true || p.is_active === "TRUE"),
@@ -54,6 +56,8 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
     event.preventDefault();
     if (!isValid || submitting) return;
     setSubmitting(true);
+    setShowPaidConfirm(false);
+    setPaidNote("");
 
     const newCustomer = {
       customer_id: generateId("C"),
@@ -81,6 +85,11 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
     setItems([]);
     setForm({ full_name: "", phone_number: "", address: "", note: "" });
   };
+
+  const qrContent = lastOrder?.order_code || lastOrder?.order_id || "";
+  const qrUrl = qrContent
+    ? `https://img.vietqr.io/image/TPB-07566782401-compact.png?addInfo=${encodeURIComponent(qrContent)}&accountName=NGO%20HOANG%20TUAN%20ANH`
+    : "";
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
@@ -228,8 +237,40 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
             </button>
           </form>
           {lastOrder && (
-            <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
-              Đặt hàng thành công! Mã đơn: <strong>{lastOrder.order_code}</strong>
+            <div className="space-y-3">
+              <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+                Đặt hàng thành công! Mã đơn: <strong>{lastOrder.order_code}</strong>
+              </div>
+              {qrUrl && (
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 space-y-3">
+                  <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">QR chuyển khoản</div>
+                  <img src={qrUrl} alt="QR chuyển khoản" className="w-full rounded-lg border border-slate-200 dark:border-slate-700" />
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    Nội dung đối chiếu: <span className="font-semibold text-blue-600 dark:text-blue-400">{qrContent}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPaidConfirm(true)}
+                    className="w-full py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700"
+                  >
+                    ✅ Tôi đã thanh toán
+                  </button>
+                  {showPaidConfirm && (
+                    <div className="space-y-2">
+                      <textarea
+                        rows={3}
+                        value={paidNote}
+                        onChange={event => setPaidNote(event.target.value)}
+                        placeholder="Bạn có thể để lại ghi chú (tùy chọn)..."
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm"
+                      />
+                      <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+                        Cảm ơn bạn! Bọn mình đã nhận thông tin và sẽ xác nhận sớm.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </section>
