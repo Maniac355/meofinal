@@ -94,7 +94,7 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
       <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-800/80 backdrop-blur border-b border-slate-200 dark:border-slate-700">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white">
               <IconPackage className="w-5 h-5" />
@@ -113,7 +113,7 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         <section className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Chọn sản phẩm</h2>
@@ -247,6 +247,9 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
                   <img src={qrUrl} alt="QR chuyển khoản" className="w-full rounded-lg border border-slate-200 dark:border-slate-700" />
                   <div className="text-xs text-slate-500 dark:text-slate-400">
                     Nội dung đối chiếu: <span className="font-semibold text-blue-600 dark:text-blue-400">{qrContent}</span>
+                  </div>
+                  <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/30 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+                    Vui lòng không thay đổi nội dung chuyển khoản để đơn hàng được xác nhận nhanh nhất.
                   </div>
                   <button
                     type="button"
