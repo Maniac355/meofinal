@@ -7,6 +7,9 @@ import SearchableCombobox from "../components/SearchableCombobox";
 import legacyProvinces from "../data/legacy_tinh_tp.json";
 import legacyDistricts from "../data/legacy_quan_huyen.json";
 import legacyWards from "../data/legacy_xa_phuong.json";
+import newProvinces from "../data/new_tinh_tp.json";
+import newDistricts from "../data/new_quan_huyen.json";
+import newWards from "../data/new_xa_phuong.json";
 
 export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin }) {
   const [form, setForm] = useState({
@@ -21,9 +24,6 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   const [showPaidConfirm, setShowPaidConfirm] = useState(false);
   const [paidNote, setPaidNote] = useState("");
   const [addressMode, setAddressMode] = useState("new");
-  const [addressLoading, setAddressLoading] = useState(false);
-  const [addressError, setAddressError] = useState(false);
-  const [apiProvinces, setApiProvinces] = useState([]);
   const [provinceId, setProvinceId] = useState("");
   const [districtId, setDistrictId] = useState("");
   const [wardId, setWardId] = useState("");
@@ -31,7 +31,6 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   const [districtInput, setDistrictInput] = useState("");
   const [wardInput, setWardInput] = useState("");
   const [addressDetail, setAddressDetail] = useState("");
-  const [manualAddress, setManualAddress] = useState("");
   const [showAddressErrors, setShowAddressErrors] = useState(false);
   const previousSelectionRef = useRef(null);
 
@@ -46,33 +45,7 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   const total = items.reduce((sum, item) => sum + item.subtotal, 0);
   const isValid = items.length > 0 && form.full_name.trim() && form.phone_number.trim();
 
-  useEffect(() => {
-    if (isLegacyMode || apiProvinces.length > 0) {
-      setAddressLoading(false);
-      setAddressError(false);
-      return;
-    }
-    const controller = new AbortController();
-    setAddressLoading(true);
-    setAddressError(false);
-    fetch("https://provinces.open-api.vn/api/?depth=3", { signal: controller.signal })
-      .then(res => {
-        if (!res.ok) throw new Error("Load failed");
-        return res.json();
-      })
-      .then(data => {
-        setApiProvinces(Array.isArray(data) ? data : []);
-      })
-      .catch(err => {
-        if (err.name !== "AbortError") {
-          setAddressError(true);
-        }
-      })
-      .finally(() => {
-        setAddressLoading(false);
-      });
-    return () => controller.abort();
-  }, [isLegacyMode, apiProvinces.length]);
+  const addressLoading = false;
 
   const legacyProvinceList = useMemo(() => (
     Object.values(legacyProvinces).map(p => ({
@@ -95,39 +68,30 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
       .sort((a, b) => a.label.localeCompare(b.label, "vi"))
   ), [districtId]);
 
-  const apiProvinceList = useMemo(() => (
-    apiProvinces.map(p => ({
-      value: String(p.code),
-      label: p.name,
-      districts: p.districts || []
+  const newProvinceList = useMemo(() => (
+    Object.values(newProvinces).map(p => ({
+      value: p.code,
+      label: p.name_with_type || p.name
     })).sort((a, b) => a.label.localeCompare(b.label, "vi"))
-  ), [apiProvinces]);
+  ), []);
 
-  const selectedApiProvince = useMemo(
-    () => apiProvinceList.find(p => p.value === provinceId),
-    [apiProvinceList, provinceId]
-  );
-  const apiDistrictList = useMemo(() => (
-    (selectedApiProvince?.districts || []).map(d => ({
-      value: String(d.code),
-      label: d.name,
-      wards: d.wards || []
-    })).sort((a, b) => a.label.localeCompare(b.label, "vi"))
-  ), [selectedApiProvince]);
-  const selectedApiDistrict = useMemo(
-    () => apiDistrictList.find(d => d.value === districtId),
-    [apiDistrictList, districtId]
-  );
-  const apiWardList = useMemo(() => (
-    (selectedApiDistrict?.wards || []).map(w => ({
-      value: String(w.code),
-      label: w.name
-    })).sort((a, b) => a.label.localeCompare(b.label, "vi"))
-  ), [selectedApiDistrict]);
+  const newDistrictList = useMemo(() => (
+    Object.values(newDistricts)
+      .filter(d => d.parent_code === provinceId)
+      .map(d => ({ value: d.code, label: d.name_with_type || d.name }))
+      .sort((a, b) => a.label.localeCompare(b.label, "vi"))
+  ), [provinceId]);
 
-  const provinceOptions = isLegacyMode ? legacyProvinceList : apiProvinceList;
-  const districtOptions = isLegacyMode ? legacyDistrictList : apiDistrictList;
-  const wardOptions = isLegacyMode ? legacyWardList : apiWardList;
+  const newWardList = useMemo(() => (
+    Object.values(newWards)
+      .filter(w => w.parent_code === districtId)
+      .map(w => ({ value: w.code, label: w.name_with_type || w.name }))
+      .sort((a, b) => a.label.localeCompare(b.label, "vi"))
+  ), [districtId]);
+
+  const provinceOptions = isLegacyMode ? legacyProvinceList : newProvinceList;
+  const districtOptions = isLegacyMode ? legacyDistrictList : newDistrictList;
+  const wardOptions = isLegacyMode ? legacyWardList : newWardList;
 
   const selectedProvinceName = provinceOptions.find(p => p.value === provinceId)?.label;
   const selectedDistrictName = districtOptions.find(d => d.value === districtId)?.label;
@@ -136,47 +100,20 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   const builtAddress = [addressDetail, selectedWardName, selectedDistrictName, selectedProvinceName]
     .filter(Boolean)
     .join(", ");
-  const addressErrorActive = !isLegacyMode && addressError;
-  const shippingAddress = addressErrorActive && manualAddress.trim()
-    ? manualAddress.trim()
-    : builtAddress;
+  const shippingAddress = builtAddress;
 
-  const addressValid = addressErrorActive
-    ? Boolean(manualAddress.trim())
-    : Boolean(provinceId && districtId && wardId);
+  const addressValid = Boolean(provinceId && districtId && wardId);
   const formValid = isValid && addressValid;
 
-  const provinceError = showAddressErrors && !addressErrorActive && !provinceId
+  const provinceError = showAddressErrors && !provinceId
     ? "Vui lòng chọn Tỉnh/TP"
     : "";
-  const districtError = showAddressErrors && !addressErrorActive && provinceId && !districtId
+  const districtError = showAddressErrors && provinceId && !districtId
     ? "Vui lòng chọn Quận/Huyện"
     : "";
-  const wardError = showAddressErrors && !addressErrorActive && districtId && !wardId
+  const wardError = showAddressErrors && districtId && !wardId
     ? "Vui lòng chọn Phường/Xã"
     : "";
-  const manualAddressError = showAddressErrors && addressErrorActive && !manualAddress.trim()
-    ? "Vui lòng nhập địa chỉ đầy đủ"
-    : "";
-
-  const apiLookup = useMemo(() => {
-    const provinceMap = new Map();
-    const districtMap = new Map();
-    const wardMap = new Map();
-    apiProvinces.forEach(province => {
-      const provinceIdValue = String(province.code);
-      provinceMap.set(provinceIdValue, province);
-      (province.districts || []).forEach(district => {
-        const districtIdValue = String(district.code);
-        districtMap.set(districtIdValue, { ...district, provinceId: provinceIdValue });
-        (district.wards || []).forEach(ward => {
-          const wardIdValue = String(ward.code);
-          wardMap.set(wardIdValue, { ...ward, districtId: districtIdValue, provinceId: provinceIdValue });
-        });
-      });
-    });
-    return { provinceMap, districtMap, wardMap };
-  }, [apiProvinces]);
 
   // TODO: populate mapping tables when old/new datasets are integrated.
   const mappingOldToNew = useMemo(() => ({
@@ -192,20 +129,22 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
   }), []);
 
   const findNewPathByWardId = (targetWardId) => {
-    const ward = apiLookup.wardMap.get(targetWardId);
+    const ward = newWards[targetWardId];
     if (!ward) return null;
+    const district = newDistricts[ward.parent_code];
+    if (!district) return null;
     return {
-      provinceId: ward.provinceId,
-      districtId: ward.districtId,
+      provinceId: district.parent_code,
+      districtId: ward.parent_code,
       wardId: targetWardId
     };
   };
 
   const findNewPathByDistrictId = (targetDistrictId) => {
-    const district = apiLookup.districtMap.get(targetDistrictId);
+    const district = newDistricts[targetDistrictId];
     if (!district) return null;
     return {
-      provinceId: district.provinceId,
+      provinceId: district.parent_code,
       districtId: targetDistrictId,
       wardId: ""
     };
@@ -269,13 +208,13 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
     setWardId(nextPath.wardId || "");
     const nextProvinceLabel = movingToLegacy
       ? legacyProvinces[nextPath.provinceId]?.name_with_type || legacyProvinces[nextPath.provinceId]?.name || ""
-      : apiLookup.provinceMap.get(nextPath.provinceId)?.name || "";
+      : newProvinces[nextPath.provinceId]?.name_with_type || newProvinces[nextPath.provinceId]?.name || "";
     const nextDistrictLabel = movingToLegacy
       ? legacyDistricts[nextPath.districtId]?.name_with_type || legacyDistricts[nextPath.districtId]?.name || ""
-      : apiLookup.districtMap.get(nextPath.districtId)?.name || "";
+      : newDistricts[nextPath.districtId]?.name_with_type || newDistricts[nextPath.districtId]?.name || "";
     const nextWardLabel = movingToLegacy
       ? legacyWards[nextPath.wardId]?.name_with_type || legacyWards[nextPath.wardId]?.name || ""
-      : apiLookup.wardMap.get(nextPath.wardId)?.name || "";
+      : newWards[nextPath.wardId]?.name_with_type || newWards[nextPath.wardId]?.name || "";
     setProvinceInput(nextProvinceLabel);
     setDistrictInput(nextDistrictLabel);
     setWardInput(nextWardLabel);
@@ -296,10 +235,9 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
 
   useEffect(() => {
     if (!previousSelectionRef.current) return;
-    if (addressMode === "new" && apiProvinces.length === 0) return;
     applyMappedSelection(previousSelectionRef.current);
     previousSelectionRef.current = null;
-  }, [addressMode, apiProvinces.length, apiDistrictList, apiProvinceList, apiWardList, legacyDistrictList, legacyProvinceList, legacyWardList]);
+  }, [addressMode, legacyDistrictList, legacyProvinceList, legacyWardList, newDistrictList, newProvinceList, newWardList]);
 
   const resetDistrictAndWard = () => {
     setDistrictId("");
@@ -415,7 +353,6 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
     setDistrictInput("");
     setWardInput("");
     setAddressDetail("");
-    setManualAddress("");
   };
 
   const qrContent = lastOrder?.order_code || lastOrder?.order_id || "";
@@ -555,78 +492,60 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
               />
               Dùng địa chỉ trước sáp nhập
             </label>
-            {addressErrorActive ? (
-              <div className="space-y-2">
-                <div className="text-xs text-red-600 dark:text-red-400">
-                  Không tải được danh mục địa chỉ. Vui lòng nhập địa chỉ đầy đủ.
-                </div>
-                <input
-                  type="text"
-                  value={manualAddress}
-                  onChange={event => setManualAddress(event.target.value)}
-                  placeholder="Nhập địa chỉ đầy đủ"
-                  className={`w-full px-3 py-2 rounded-lg border dark:bg-slate-700 text-sm ${manualAddressError ? "border-red-400 dark:border-red-500" : "border-red-200 dark:border-red-700"}`}
-                />
-                {manualAddressError && (
-                  <div className="text-xs text-red-500">{manualAddressError}</div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <SearchableCombobox
-                  id="province-combobox"
-                  label="Tỉnh/TP"
-                  required
-                  placeholder="Chọn Tỉnh/TP"
-                  options={provinceOptions}
-                  value={provinceId}
-                  inputValue={provinceInput}
-                  onInputChange={handleProvinceInput}
-                  onChange={handleProvinceSelect}
-                  disabled={addressLoading}
-                  loading={addressLoading}
-                  error={provinceError}
-                  onBlur={() => setShowAddressErrors(true)}
-                />
-                <SearchableCombobox
-                  id="district-combobox"
-                  label="Quận/Huyện"
-                  required
-                  placeholder="Chọn Quận/Huyện"
-                  options={districtOptions}
-                  value={districtId}
-                  inputValue={districtInput}
-                  onInputChange={handleDistrictInput}
-                  onChange={handleDistrictSelect}
-                  disabled={!provinceId || addressLoading}
-                  loading={addressLoading}
-                  error={districtError}
-                  onBlur={() => setShowAddressErrors(true)}
-                />
-                <SearchableCombobox
-                  id="ward-combobox"
-                  label="Phường/Xã"
-                  required
-                  placeholder="Chọn Phường/Xã"
-                  options={wardOptions}
-                  value={wardId}
-                  inputValue={wardInput}
-                  onInputChange={handleWardInput}
-                  onChange={handleWardSelect}
-                  disabled={!districtId || addressLoading}
-                  loading={addressLoading}
-                  error={wardError}
-                  onBlur={() => setShowAddressErrors(true)}
-                />
-                <input
-                  type="text"
-                  value={addressDetail}
-                  onChange={event => setAddressDetail(event.target.value)}
-                  placeholder="Địa chỉ cụ thể (số nhà, tên đường)"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm"
-                />
-              </div>
-            )}
+            <div className="space-y-3">
+              <SearchableCombobox
+                id="province-combobox"
+                label="Tỉnh/TP"
+                required
+                placeholder="Chọn Tỉnh/TP"
+                options={provinceOptions}
+                value={provinceId}
+                inputValue={provinceInput}
+                onInputChange={handleProvinceInput}
+                onChange={handleProvinceSelect}
+                disabled={addressLoading}
+                loading={addressLoading}
+                error={provinceError}
+                onBlur={() => setShowAddressErrors(true)}
+              />
+              <SearchableCombobox
+                id="district-combobox"
+                label="Quận/Huyện"
+                required
+                placeholder="Chọn Quận/Huyện"
+                options={districtOptions}
+                value={districtId}
+                inputValue={districtInput}
+                onInputChange={handleDistrictInput}
+                onChange={handleDistrictSelect}
+                disabled={!provinceId || addressLoading}
+                loading={addressLoading}
+                error={districtError}
+                onBlur={() => setShowAddressErrors(true)}
+              />
+              <SearchableCombobox
+                id="ward-combobox"
+                label="Phường/Xã"
+                required
+                placeholder="Chọn Phường/Xã"
+                options={wardOptions}
+                value={wardId}
+                inputValue={wardInput}
+                onInputChange={handleWardInput}
+                onChange={handleWardSelect}
+                disabled={!districtId || addressLoading}
+                loading={addressLoading}
+                error={wardError}
+                onBlur={() => setShowAddressErrors(true)}
+              />
+              <input
+                type="text"
+                value={addressDetail}
+                onChange={event => setAddressDetail(event.target.value)}
+                placeholder="Địa chỉ cụ thể (số nhà, tên đường)"
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm"
+              />
+            </div>
             <textarea
               rows={3}
               value={form.note}
