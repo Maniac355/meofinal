@@ -68,12 +68,13 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
       .sort((a, b) => a.label.localeCompare(b.label, "vi"))
   ), [districtId]);
 
+  const newProvinceEntries = useMemo(() => Object.values(newProvinces), []);
   const newProvinceList = useMemo(() => (
-    Object.values(newProvinces).map(p => ({
+    newProvinceEntries.map(p => ({
       value: p.code,
       label: p.name_with_type || p.name
     })).sort((a, b) => a.label.localeCompare(b.label, "vi"))
-  ), []);
+  ), [newProvinceEntries]);
 
   const newDistrictList = useMemo(() => (
     Object.values(newDistricts)
@@ -104,6 +105,7 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
 
   const addressValid = Boolean(provinceId && districtId && wardId);
   const formValid = isValid && addressValid;
+  const isNewProvinceDataOutdated = !isLegacyMode && newProvinceEntries.length !== 34;
 
   const provinceError = showAddressErrors && !provinceId
     ? "Vui lòng chọn Tỉnh/TP"
@@ -492,6 +494,11 @@ export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin
               />
               Dùng địa chỉ trước sáp nhập
             </label>
+            {isNewProvinceDataOutdated && (
+              <div className="text-xs text-amber-600 dark:text-amber-400">
+                Dữ liệu địa danh mới hiện có {newProvinceEntries.length} tỉnh/TP. Vui lòng cập nhật danh mục sau sáp nhập còn 34 tỉnh/TP.
+              </div>
+            )}
             <div className="space-y-3">
               <SearchableCombobox
                 id="province-combobox"
