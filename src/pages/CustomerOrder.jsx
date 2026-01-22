@@ -1,0 +1,239 @@
+import { useMemo, useState } from "react";
+import formatCurrency from "../utils/formatCurrency";
+import { generateId } from "../utils/ids";
+import { includesSearchValue, normalizeSearchValue } from "../utils/search";
+import { IconCheck, IconPackage, IconSearch } from "../components/Icons";
+
+export default function CustomerOrder({ products, onCreateOrder, onNavigateAdmin }) {
+  const [form, setForm] = useState({
+    full_name: "",
+    phone_number: "",
+    address: "",
+    note: ""
+  });
+  const [items, setItems] = useState([]);
+  const [productSearch, setProductSearch] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [lastOrder, setLastOrder] = useState(null);
+
+  const activeProducts = useMemo(
+    () => products.filter(p => p.is_active === true || p.is_active === "TRUE"),
+    [products]
+  );
+  const productQuery = normalizeSearchValue(productSearch);
+  const filteredProducts = activeProducts.filter(p => includesSearchValue(p.product_name, productQuery));
+  const total = items.reduce((sum, item) => sum + item.subtotal, 0);
+  const isValid = items.length > 0 && form.full_name.trim() && form.phone_number.trim();
+
+  const toggleProduct = (product) => {
+    const existing = items.find(i => i.product_id === product.product_id);
+    if (existing) {
+      setItems(items.filter(i => i.product_id !== product.product_id));
+      return;
+    }
+    const price = Number(product.price) || 0;
+    setItems([...items, {
+      product_id: product.product_id,
+      product_name: product.product_name,
+      quantity: 1,
+      unit_price: price,
+      subtotal: price
+    }]);
+  };
+
+  const updateQty = (productId, qty) => {
+    const nextQty = Math.max(1, parseInt(qty, 10) || 1);
+    setItems(items.map(item =>
+      item.product_id === productId
+        ? { ...item, quantity: nextQty, subtotal: item.unit_price * nextQty }
+        : item
+    ));
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!isValid || submitting) return;
+    setSubmitting(true);
+
+    const newCustomer = {
+      customer_id: generateId("C"),
+      full_name: form.full_name.trim(),
+      phone_number: form.phone_number.trim(),
+      address: form.address.trim(),
+      notes: form.note.trim(),
+      created_at: new Date().toISOString().split("T")[0]
+    };
+
+    const payload = {
+      customer_id: null,
+      newCustomer,
+      shipping_address: form.address.trim(),
+      shipping_fee: 0,
+      vtp_order_code: "",
+      note: form.note.trim(),
+      items,
+      total_amount: total
+    };
+
+    const created = await onCreateOrder(payload);
+    setLastOrder(created || null);
+    setSubmitting(false);
+    setItems([]);
+    setForm({ full_name: "", phone_number: "", address: "", note: "" });
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
+      <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-800/80 backdrop-blur border-b border-slate-200 dark:border-slate-700">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white">
+              <IconPackage className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="text-base font-semibold">Đặt hàng nhanh</h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Chọn sản phẩm và gửi thông tin</p>
+            </div>
+          </div>
+          <button
+            onClick={onNavigateAdmin}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+          >
+            Admin
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+        <section className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Chọn sản phẩm</h2>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{items.length} sản phẩm</span>
+          </div>
+          <div className="relative">
+            <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              value={productSearch}
+              onChange={event => setProductSearch(event.target.value)}
+              placeholder="Tìm sản phẩm..."
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm"
+            />
+          </div>
+          <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+            {filteredProducts.map(product => {
+              const selected = items.find(i => i.product_id === product.product_id);
+              return (
+                <button
+                  key={product.product_id}
+                  type="button"
+                  onClick={() => toggleProduct(product)}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl border ${selected ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30" : "border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700"}`}
+                >
+                  <div className={`w-5 h-5 rounded-md border flex items-center justify-center ${selected ? "bg-blue-500 border-blue-500" : "border-slate-300 dark:border-slate-500"}`}>
+                    {selected && <IconCheck className="w-3 h-3 text-white" />}
+                  </div>
+                  <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden">
+                    {product.image_url ? (
+                      <img src={product.image_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <IconPackage className="w-5 h-5 text-slate-400" />
+                    )}
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="text-sm font-semibold text-slate-700 dark:text-slate-100">{product.product_name}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">{formatCurrency(product.price)}</div>
+                  </div>
+                  {selected && (
+                    <div className="flex items-center gap-1" onClick={event => event.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => updateQty(product.product_id, selected.quantity - 1)}
+                        className="w-6 h-6 rounded-lg border border-slate-200 dark:border-slate-600 text-xs"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        min="1"
+                        value={selected.quantity}
+                        onChange={event => updateQty(product.product_id, event.target.value)}
+                        className="w-10 h-6 text-center rounded-lg border border-slate-200 dark:border-slate-600 text-xs dark:bg-slate-700"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => updateQty(product.product_id, selected.quantity + 1)}
+                        className="w-6 h-6 rounded-lg border border-slate-200 dark:border-slate-600 text-xs"
+                      >
+                        +
+                      </button>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+            {filteredProducts.length === 0 && (
+              <div className="text-center text-sm text-slate-500 dark:text-slate-400 py-6">Không có sản phẩm phù hợp.</div>
+            )}
+          </div>
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
+            <div className="flex items-center justify-between text-sm font-semibold">
+              <span>Tổng cộng</span>
+              <span className="text-blue-600 dark:text-blue-400">{formatCurrency(total)}</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Thông tin nhận hàng</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Vui lòng điền đầy đủ để chúng tôi liên hệ.</p>
+          </div>
+          <form className="space-y-3" onSubmit={handleSubmit}>
+            <input
+              type="text"
+              required
+              value={form.full_name}
+              onChange={event => setForm({ ...form, full_name: event.target.value })}
+              placeholder="Họ và tên *"
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm"
+            />
+            <input
+              type="tel"
+              required
+              value={form.phone_number}
+              onChange={event => setForm({ ...form, phone_number: event.target.value })}
+              placeholder="Số điện thoại *"
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm"
+            />
+            <input
+              type="text"
+              value={form.address}
+              onChange={event => setForm({ ...form, address: event.target.value })}
+              placeholder="Địa chỉ"
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm"
+            />
+            <textarea
+              rows={3}
+              value={form.note}
+              onChange={event => setForm({ ...form, note: event.target.value })}
+              placeholder="Ghi chú"
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={!isValid || submitting}
+              className="w-full py-2.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60"
+            >
+              {submitting ? "Đang gửi..." : "Gửi đơn hàng"}
+            </button>
+          </form>
+          {lastOrder && (
+            <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+              Đặt hàng thành công! Mã đơn: <strong>{lastOrder.order_code}</strong>
+            </div>
+          )}
+        </section>
+      </main>
+    </div>
+  );
+}
