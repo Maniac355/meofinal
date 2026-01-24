@@ -9,25 +9,32 @@ import {
   SEPAY_API_URL
 } from "./constants";
 import { IconRefresh } from "./components/Icons";
-import { generateId } from "./utils/ids";
 import { includesSearchValue, normalizeSearchValue } from "./utils/search";
 
 // ============ UTILITIES ============
-function generateOrderCode(orders) {
-  const maxNum = orders.reduce((max, o) => {
-    const match = o.order_code?.match(/DH(\d+)/);
+function getNextSequentialId(values, prefix) {
+  const regex = new RegExp(`^${prefix}(\\d+)$`);
+  const maxNum = values.reduce((max, value) => {
+    const match = String(value || "").match(regex);
     const num = match ? parseInt(match[1], 10) : 0;
     return num > max ? num : max;
   }, 0);
-  const existingCodes = new Set(orders.map(o => o.order_code).filter(Boolean));
-  const timeSeed = Number(String(Date.now()).slice(-4));
-  let nextNum = Math.max(maxNum + 1, timeSeed);
-  let code = `DH${String(nextNum).padStart(4, "0")}`;
-  while (existingCodes.has(code)) {
+  const existing = new Set(values.map(value => String(value || "")).filter(Boolean));
+  let nextNum = maxNum + 1;
+  let code = `${prefix}${String(nextNum).padStart(4, "0")}`;
+  while (existing.has(code)) {
     nextNum += 1;
-    code = `DH${String(nextNum).padStart(4, "0")}`;
+    code = `${prefix}${String(nextNum).padStart(4, "0")}`;
   }
   return code;
+}
+
+function generateOrderCode(orders) {
+  return getNextSequentialId(orders.map(o => o.order_code), "DH");
+}
+
+function generateOrderId(orders) {
+  return getNextSequentialId(orders.map(o => o.order_id), "IMPORT");
 }
 
 // ============ SYNC CONFIG ============
@@ -304,7 +311,7 @@ export default function App() {
       await postAPI(DB_API_URL, "upsert_customer", { data: data.newCustomer });
     }
     const newOrder = {
-      order_id: generateId("O"),
+      order_id: generateOrderId(orders),
       order_code: generateOrderCode(orders),
       customer_id: custId,
       shipping_address: data.shipping_address,
